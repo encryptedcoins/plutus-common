@@ -1,25 +1,24 @@
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase                  #-}
+{-# LANGUAGE OverloadedStrings           #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 module Tests.Blockfrost where
 
-import           Cardano.Api                   (AsType (..), Hash, NetworkId (..), NetworkMagic (..), SerialiseAsRawBytes (..),
-                                                StakeAddress (..), StakeKey, TxId, deserialiseFromBech32)
-import           Cardano.Api.Shelley           (PoolId, StakeAddress (..), StakeCredential (..))
-import           Cardano.Ledger.Alonzo.TxInfo  (transKeyHash)
-import qualified Cardano.Ledger.Credential     as Cred
-import           Cardano.Ledger.Crypto         (StandardCrypto)
-import           Cardano.Ledger.Keys           (KeyHash (..))
-import           Data.Maybe                    (fromJust)
-import           Data.String                   (fromString)
-import           Data.Text                     (Text)
-import           Ledger                        (Address, MintingPolicyHash (..), PubKeyHash (..),
-                                                StakePubKeyHash (StakePubKeyHash), stakePubKeyHashCredential, stakingCredential)
-import           Plutus.V1.Ledger.Api          (CurrencySymbol (..), fromBuiltin, toBuiltin)
-import           PlutusAppsExtra.IO.Blockfrost (getAddressFromStakePubKeyHash, verifyAsset)
-import           PlutusAppsExtra.Utils.Address (bech32ToAddress, bech32ToStakeAddress)
-import qualified Text.Hex                      as T
+import           Cardano.Api                  (AsType (..), Hash, NetworkId (..), NetworkMagic (..), SerialiseAsRawBytes (..),
+                                               StakeAddress (..), StakeKey, deserialiseFromBech32)
+import           Cardano.Api.Shelley          (PoolId, StakeAddress (..), StakeCredential (..))
+import           Cardano.Ledger.Alonzo.TxInfo (transKeyHash)
+import qualified Cardano.Ledger.Credential    as Cred
+import           Cardano.Ledger.Crypto        (StandardCrypto)
+import           Cardano.Ledger.Keys          (KeyHash (..))
+import           Data.Maybe                   (fromJust)
+import           Data.String                  (fromString)
+import           Data.Text                    (Text)
+import           IO.Blockfrost                (getAddressFromStakePubKeyHash)
+import           Ledger                       (Address, PubKeyHash (..), StakePubKeyHash (StakePubKeyHash),
+                                               stakePubKeyHashCredential, stakingCredential)
+import           Plutus.V1.Ledger.Api         (fromBuiltin, toBuiltin)
+import           Utils.Address                (bech32ToAddress, bech32ToStakeAddress)
 
 toStake :: Text -> StakeAddress
 toStake = fromJust . bech32ToStakeAddress 
@@ -55,10 +54,3 @@ getAddress (StakeAddress _ s@(Cred.KeyHashObj hash)) pool addr
 
 stakeCredToSpkh :: Cred.StakeCredential StandardCrypto -> StakePubKeyHash
 stakeCredToSpkh (Cred.KeyHashObj hash) = StakePubKeyHash $ transKeyHash hash
-
-verifyAssetTest :: IO (Maybe TxId)
-verifyAssetTest = verifyAsset 
-    (CurrencySymbol $ toBuiltin $ fromJust $ T.decodeHex "4cd1187e477d56e419c354f1e4c7997a736dfc5e095a2511aba0f75d")
-    ""
-    1 
-    (toAddr "addr_test1qznvz33axk8zxup2e2wgt7zr0398r3x8uup5xf8ljddreqpu9sytuyrjjxlg6udmkvk6z8emjasmpxgl9fhkjs857wgqrfjuwn")
