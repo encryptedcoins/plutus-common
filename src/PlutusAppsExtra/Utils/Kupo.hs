@@ -1,6 +1,5 @@
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedLists            #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -11,7 +10,6 @@
 module PlutusAppsExtra.Utils.Kupo where
 
 import           Codec.Serialise               (deserialise)
-import           Control.Monad                 (mzero)
 import           Data.Aeson                    (FromJSON (..), withObject, (.:))
 import qualified Data.Aeson                    as J
 import qualified Data.Aeson.Key                as J
@@ -120,13 +118,15 @@ instance FromJSON (Kupo Value) where
         where
             parseAssets = fmap mconcat . traverse parseAsset . J.toList
             parseAsset (asset, amount) = Value.Value . PMap.fromList <$> do
+                amount' <- parseJSON amount
                 case span (/= '.') (J.toString asset) of
                     (cs, '.' : name) -> do
-                        amount' <- parseJSON amount
                         name'   <- Value.TokenName      <$> toBbs name
                         cs'     <- Value.CurrencySymbol <$> toBbs cs
-                        pure [(cs', PMap.singleton  name' amount')]
-                    _ -> mzero
+                        pure [(cs', PMap.singleton name' amount')]
+                    (cs, _) -> do
+                        cs'     <- Value.CurrencySymbol <$> toBbs cs
+                        pure [(cs', PMap.singleton "" amount')]
             toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex . T.pack
 
 -------------------------------------------- ToHttpApiData instances --------------------------------------------

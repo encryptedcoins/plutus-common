@@ -99,6 +99,17 @@ instance FromJSON BfMintingPolarity where
         _        -> mzero
 
 
+data AssetTxsResponse = AssetTxsResponse
+    { atrTxHash  :: TxId
+    , atrTxIndex :: Integer
+    } deriving Show
+
+instance FromJSON AssetTxsResponse where
+    parseJSON = withObject "Specific asset response" $ \o -> do
+        atrTxHash  <- o .: "tx_hash"
+        atrTxIndex <- o .: "tx_index"
+        pure AssetTxsResponse{..}
+
 data AssetHistoryResponse = AssetHistoryResponse
     { ahrTxHash          :: TxId
     , ahrMintingPolarity :: BfMintingPolarity
@@ -106,7 +117,7 @@ data AssetHistoryResponse = AssetHistoryResponse
     } deriving Show
 
 instance FromJSON AssetHistoryResponse where
-    parseJSON = withObject "Specific asset response" $ \o -> do
+    parseJSON = withObject "Asset history response" $ \o -> do
         ahrTxHash          <- o .: "tx_hash"
         ahrMintingPolarity <- o .: "action"
         ahrAmount          <- o .: "amount" >>= maybe mzero pure . readMaybe . T.unpack
