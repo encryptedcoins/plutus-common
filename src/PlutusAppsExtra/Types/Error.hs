@@ -23,6 +23,7 @@ import           GHC.Generics                   (Generic)
 import           Ledger                         (Address, CardanoTx, Value)
 import           Network.HTTP.Client            (HttpExceptionContent, Request)
 import           Prelude
+import Cardano.Node.Emulator (BalancingError)
 
 data ConnectionError = ConnectionError Request HttpExceptionContent
     deriving (Show, Exception)
@@ -54,7 +55,7 @@ data BalanceExternalTxError
     = MakeUnbalancedTxError
     | MakeBuildTxFromEmulatorTxError
     | NonBabbageEraChangeAddress
-    | MakeUtxoProviderError
+    | MakeUtxoProviderError BalancingError
     | MakeAutoBalancedTxError
     deriving (Show, Exception, Eq, Generic, FromJSON, ToJSON)
 
