@@ -46,7 +46,7 @@ import           Text.Hex                               (decodeHex)
 ------------------------ Export/Import of transactions -------------------------
 
 unbalancedTxToCBOR :: Params -> UnbalancedTx -> Maybe Text
-unbalancedTxToCBOR params = 
+unbalancedTxToCBOR params =
     fmap (encodeByteString . serialiseToCBOR . partialTx) . eitherToMaybe . export params
 
 textToCardanoTx :: Text -> Maybe CardanoTx
@@ -70,30 +70,26 @@ cardanoTxToSealedTx = \case
     (CardanoApiTx (SomeTx tx _)) -> Just $ sealedTxFromCardano' tx
     _                            -> Nothing
 
-addMetadataToCardanoTx  :: CardanoTx -> Maybe (C.TxMetadataInEra era) -> CardanoTx 
+addMetadataToCardanoTx  :: CardanoTx -> Maybe C.TxMetadata -> CardanoTx
 addMetadataToCardanoTx ctx Nothing = ctx
-addMetadataToCardanoTx ctx (Just meta) = cardanoTxMap onTx onSomeTx ctx
+addMetadataToCardanoTx ctx (Just (C.TxMetadata meta)) = cardanoTxMap onTx onSomeTx ctx
     where
-        meta' = case meta of
-            C.TxMetadataNone -> mempty
-            C.TxMetadataInEra _ (C.TxMetadata m) -> m
-
-        metadataBs = serialiseToCBOR $ C.TxMetadata meta'
-        metadataShelley = maybeToStrictMaybe $ Just $ Shelley.Metadata $ toShelleyMetadata meta'
+        metadataBs = serialiseToCBOR $ C.TxMetadata meta
+        metadataShelley = maybeToStrictMaybe $ Just $ Shelley.Metadata $ toShelleyMetadata meta
         metadataAllegra mb = mb <&> \(Allegra.AuxiliaryData a s) -> Allegra.AuxiliaryData a s
-        metadataAlonzo  mb = mb <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta', ..}
-        metadataBabbage mb = mb <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta', ..}
+        metadataAlonzo  mb = mb <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta, ..}
+        metadataBabbage mb = mb <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta, ..}
 
         onTx tx = tx { txMetadata = Just $ toBuiltin metadataBs}
-        
-        onSomeTx (SomeTx (Byron.ByronTx (ATxAux tx wit _)) era) 
+
+        onSomeTx (SomeTx (Byron.ByronTx (ATxAux tx wit _)) era)
             = SomeTx (Byron.ByronTx (ATxAux tx wit metadataBs)) era
-        onSomeTx (SomeTx (ShelleyTx sera tx) era) = case sera of
-            C.ShelleyBasedEraShelley -> SomeTx (ShelleyTx C.ShelleyBasedEraShelley (addShelley tx)) era
-            C.ShelleyBasedEraAllegra -> SomeTx (ShelleyTx C.ShelleyBasedEraAllegra (addAllegra tx)) era
-            C.ShelleyBasedEraMary    -> SomeTx (ShelleyTx C.ShelleyBasedEraMary    (addAllegra tx)) era
-            C.ShelleyBasedEraAlonzo  -> SomeTx (ShelleyTx C.ShelleyBasedEraAlonzo  (addAlonzo  tx)) era
-            C.ShelleyBasedEraBabbage -> SomeTx (ShelleyTx C.ShelleyBasedEraBabbage (addBabbage tx)) era
+        onSomeTx (SomeTx (ShelleyTx sera tx) era) = (`SomeTx` era) $ case sera of
+            C.ShelleyBasedEraShelley -> ShelleyTx C.ShelleyBasedEraShelley (addShelley tx)
+            C.ShelleyBasedEraAllegra -> ShelleyTx C.ShelleyBasedEraAllegra (addAllegra tx)
+            C.ShelleyBasedEraMary    -> ShelleyTx C.ShelleyBasedEraMary    (addAllegra tx)
+            C.ShelleyBasedEraAlonzo  -> ShelleyTx C.ShelleyBasedEraAlonzo  (addAlonzo  tx)
+            C.ShelleyBasedEraBabbage -> ShelleyTx C.ShelleyBasedEraBabbage (addBabbage tx)
 
         addShelley :: Shelley.Tx StandardShelley -> Shelley.Tx StandardShelley
         addShelley Shelley.Tx{..} = Shelley.Tx{auxiliaryData = metadataShelley, ..}
@@ -117,22 +113,22 @@ textToSignature txt = Signature . toBuiltin <$> decodeHex txt
 addCardanoTxSignature :: PubKey -> Signature -> CardanoTx -> CardanoTx
 addCardanoTxSignature pubKey sig = cardanoTxMap addSignatureTx addSignatureCardano
     where
-        addSignatureTx tx = tx & signatures . at pubKey ?~ sig 
+        addSignatureTx tx = tx & signatures . at pubKey ?~ sig
 
         addSignatureCardano (CardanoApiEmulatorEraTx ctx)
             = CardanoApiEmulatorEraTx (addSignatureCardano' ctx)
 
-        addSignatureCardano' (ShelleyTx shelleyBasedEra (ValidatedTx body wits isValid aux)) = 
+        addSignatureCardano' (ShelleyTx shelleyBasedEra (ValidatedTx body wits isValid aux)) =
             let wits' = wits <> mempty { Wits.txwitsVKey = Set.singleton $ WitVKey (VKey vk) sig' }
             in  ShelleyTx shelleyBasedEra (ValidatedTx body wits' isValid aux)
-            
+
         vk = fromMaybe (error "addCardanoTxSignature: deserialise VerKeyDSIGN from a PubKey.")
             . Crypto.rawDeserialiseVerKeyDSIGN
             . bytes
             $ getPubKey pubKey
 
-        sig' = Crypto.SignedDSIGN 
+        sig' = Crypto.SignedDSIGN
             . fromMaybe (error "addCardanoTxSignature: deserialise SigDSIGN from a Signature.")
-            . Crypto.rawDeserialiseSigDSIGN 
+            . Crypto.rawDeserialiseSigDSIGN
             . fromBuiltin
             $ getSignature sig
