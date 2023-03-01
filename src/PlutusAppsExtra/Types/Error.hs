@@ -13,6 +13,7 @@
 module PlutusAppsExtra.Types.Error where
 
 import           Cardano.Api                    (FromJSON, ToJSON)
+import           Cardano.Node.Emulator          (BalancingError)
 import           Cardano.Wallet.Api.Types       (ApiSerialisedTransaction)
 import           Cardano.Wallet.Primitive.Types (WalletId)
 import           Control.Exception              (Exception)
@@ -54,7 +55,7 @@ data BalanceExternalTxError
     = MakeUnbalancedTxError
     | MakeBuildTxFromEmulatorTxError
     | NonBabbageEraChangeAddress
-    | MakeUtxoProviderError
+    | MakeUtxoProviderError BalancingError
     | MakeAutoBalancedTxError
     deriving (Show, Exception, Eq, Generic, FromJSON, ToJSON)
 

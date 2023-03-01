@@ -44,7 +44,7 @@ balanceExternalTx params walletUTXO changeAddress lookups cons = do
 
     walletUTXOIndex <- toCardanoUtxo params walletUTXO
 
-    let utxoProvider = throwEither MakeUtxoProviderError . utxoProviderFromWalletOutputs walletUTXOIndex
+    let utxoProvider = either (throwM . MakeUtxoProviderError) pure . utxoProviderFromWalletOutputs walletUTXOIndex
 
     tx <- makeAutoBalancedTransactionWithUtxoProvider
             params
