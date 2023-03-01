@@ -13,6 +13,7 @@
 module PlutusAppsExtra.Types.Error where
 
 import           Cardano.Api                    (FromJSON, ToJSON)
+import           Cardano.Node.Emulator          (BalancingError)
 import           Cardano.Wallet.Api.Types       (ApiSerialisedTransaction)
 import           Cardano.Wallet.Primitive.Types (WalletId)
 import           Control.Exception              (Exception)
@@ -23,7 +24,6 @@ import           GHC.Generics                   (Generic)
 import           Ledger                         (Address, CardanoTx, Value)
 import           Network.HTTP.Client            (HttpExceptionContent, Request)
 import           Prelude
-import Cardano.Node.Emulator (BalancingError)
 
 data ConnectionError = ConnectionError Request HttpExceptionContent
     deriving (Show, Exception)

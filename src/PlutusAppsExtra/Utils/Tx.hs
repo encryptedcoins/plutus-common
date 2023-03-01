@@ -5,33 +5,43 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TypeFamilies          #-}
 
 module PlutusAppsExtra.Utils.Tx where
 
-import           Cardano.Api.Shelley                 (AnyCardanoEra (..), AsType (..), CardanoEra (..), ConsensusMode (..),
-                                                      EraInMode (..), InAnyCardanoEra (..), SerialiseAsCBOR (..), Tx (..),
-                                                      toEraInMode)
-import qualified Cardano.Crypto.DSIGN                as Crypto
-import qualified Cardano.Ledger.Alonzo.TxWitness     as Wits
-import           Cardano.Ledger.Babbage.Tx           (ValidatedTx (ValidatedTx))
-import           Cardano.Ledger.Shelley.API          (VKey (VKey), WitVKey (WitVKey))
-import           Cardano.Node.Emulator.Params        (Params)
-import           Cardano.Wallet.Api.Types            (ApiSerialisedTransaction (..), getApiT)
-import           Cardano.Wallet.LocalClient.ExportTx (ExportTx (..), export)
-import           Cardano.Wallet.Primitive.Types.Tx   (SealedTx, cardanoTxIdeallyNoLaterThan, sealedTxFromCardano')
-import           Control.FromSum                     (eitherToMaybe, fromMaybe)
-import           Control.Lens                        (At (at), (&), (?~))
-import           Data.Aeson.Extras                   (encodeByteString, tryDecode)
-import qualified Data.Set                            as Set
-import           Data.Text                           (Text)
-import           Ledger                              (PubKey (..), Signature (..), cardanoTxMap, signatures)
-import           Ledger.Constraints                  (UnbalancedTx)
-import           Ledger.Tx                           (CardanoTx (..), SomeCardanoApiTx (..))
-import           Plutus.V1.Ledger.Bytes              (bytes, fromBytes)
-import           Plutus.V2.Ledger.Api                (fromBuiltin, toBuiltin)
-import           Text.Hex                            (decodeHex)
+import qualified Cardano.Api                            as C
+import qualified Cardano.Api.Byron                      as Byron
+import           Cardano.Api.Shelley                    (AnyCardanoEra (..), AsType (..), CardanoEra (..), ConsensusMode (..),
+                                                         EraInMode (..), InAnyCardanoEra (..), SerialiseAsCBOR (..), Tx (..),
+                                                         toEraInMode, toShelleyMetadata)
+import           Cardano.Chain.UTxO                     (ATxAux (..))
+import qualified Cardano.Crypto.DSIGN                   as Crypto
+import qualified Cardano.Ledger.Alonzo.Data             as Alonzo
+import qualified Cardano.Ledger.Alonzo.Tx               as Alonzo
+import qualified Cardano.Ledger.Alonzo.TxWitness        as Wits
+import           Cardano.Ledger.Babbage.Tx              (ValidatedTx (ValidatedTx))
+import           Cardano.Ledger.Shelley.API             (VKey (VKey), WitVKey (WitVKey))
+import qualified Cardano.Ledger.Shelley.API.Types       as Shelley
+import qualified Cardano.Ledger.ShelleyMA.AuxiliaryData as Allegra
+import           Cardano.Node.Emulator.Params           (Params)
+import           Cardano.Wallet.Api.Types               (ApiSerialisedTransaction (..), getApiT)
+import           Cardano.Wallet.LocalClient.ExportTx    (ExportTx (..), export)
+import           Cardano.Wallet.Primitive.Types.Tx      (SealedTx, cardanoTxIdeallyNoLaterThan, sealedTxFromCardano')
+import           Control.FromSum                        (eitherToMaybe, fromMaybe)
+import           Control.Lens                           (At (at), (&), (?~))
+import           Data.Aeson.Extras                      (encodeByteString, tryDecode)
+import           Data.Functor                           ((<&>))
+import           Data.Maybe.Strict                      (maybeToStrictMaybe)
+import qualified Data.Set                               as Set
+import           Data.Text                              (Text)
+import           Ledger                                 (PubKey (..), Signature (..), Tx (..), cardanoTxMap, signatures)
+import           Ledger.Constraints                     (UnbalancedTx)
+import           Ledger.Tx                              (CardanoTx (..), SomeCardanoApiTx (..))
+import           Ouroboros.Consensus.Shelley.Eras       (StandardAlonzo, StandardBabbage, StandardShelley)
+import           Plutus.V1.Ledger.Bytes                 (bytes, fromBytes)
+import           Plutus.V2.Ledger.Api                   (fromBuiltin, toBuiltin)
+import           Text.Hex                               (decodeHex)
 
 ------------------------ Export/Import of transactions -------------------------
 
@@ -59,6 +69,42 @@ cardanoTxToSealedTx :: CardanoTx -> Maybe SealedTx
 cardanoTxToSealedTx = \case
     (CardanoApiTx (SomeTx tx _)) -> Just $ sealedTxFromCardano' tx
     _                            -> Nothing
+
+addMetadataToCardanoTx  :: CardanoTx -> Maybe (C.TxMetadataInEra era) -> CardanoTx 
+addMetadataToCardanoTx ctx Nothing = ctx
+addMetadataToCardanoTx ctx (Just meta) = cardanoTxMap onTx onSomeTx ctx
+    where
+        meta' = case meta of
+            C.TxMetadataNone -> mempty
+            C.TxMetadataInEra _ (C.TxMetadata m) -> m
+
+        metadataBs = serialiseToCBOR $ C.TxMetadata meta'
+        metadataShelley = maybeToStrictMaybe $ Just $ Shelley.Metadata $ toShelleyMetadata meta'
+        metadataAllegra mb = mb <&> \(Allegra.AuxiliaryData a s) -> Allegra.AuxiliaryData a s
+        metadataAlonzo  mb = mb <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta', ..}
+        metadataBabbage mb = mb <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta', ..}
+
+        onTx tx = tx { txMetadata = Just $ toBuiltin metadataBs}
+        
+        onSomeTx (SomeTx (Byron.ByronTx (ATxAux tx wit _)) era) 
+            = SomeTx (Byron.ByronTx (ATxAux tx wit metadataBs)) era
+        onSomeTx (SomeTx (ShelleyTx sera tx) era) = case sera of
+            C.ShelleyBasedEraShelley -> SomeTx (ShelleyTx C.ShelleyBasedEraShelley (addShelley tx)) era
+            C.ShelleyBasedEraAllegra -> SomeTx (ShelleyTx C.ShelleyBasedEraAllegra (addAllegra tx)) era
+            C.ShelleyBasedEraMary    -> SomeTx (ShelleyTx C.ShelleyBasedEraMary    (addAllegra tx)) era
+            C.ShelleyBasedEraAlonzo  -> SomeTx (ShelleyTx C.ShelleyBasedEraAlonzo  (addAlonzo  tx)) era
+            C.ShelleyBasedEraBabbage -> SomeTx (ShelleyTx C.ShelleyBasedEraBabbage (addBabbage tx)) era
+
+        addShelley :: Shelley.Tx StandardShelley -> Shelley.Tx StandardShelley
+        addShelley Shelley.Tx{..} = Shelley.Tx{auxiliaryData = metadataShelley, ..}
+
+        addAllegra Shelley.Tx{..} = Shelley.Tx{auxiliaryData = metadataAllegra auxiliaryData, ..}
+
+        addAlonzo :: ValidatedTx StandardAlonzo -> ValidatedTx StandardAlonzo
+        addAlonzo ValidatedTx{..} = ValidatedTx{Alonzo.auxiliaryData = metadataAlonzo auxiliaryData, ..}
+
+        addBabbage :: ValidatedTx StandardBabbage -> ValidatedTx StandardBabbage
+        addBabbage ValidatedTx{..} = ValidatedTx{Alonzo.auxiliaryData = metadataBabbage auxiliaryData, ..}
 
 ------------------------ External keys and signatures -------------------------
 
