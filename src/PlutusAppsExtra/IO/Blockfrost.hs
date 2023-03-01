@@ -16,6 +16,7 @@ import           Data.Aeson                       (eitherDecodeFileStrict)
 import           Data.Data                        (Proxy (..))
 import           Data.Foldable                    (find)
 import           Data.Functor                     ((<&>))
+import           Data.List                        ((\\), union)
 import           Data.Maybe                       (listToMaybe)
 import           Data.Text                        (Text)
 import           Ledger                           (Address, AssetClass, CurrencySymbol, StakePubKeyHash (..), TokenName)
@@ -58,6 +59,23 @@ verifyAsset cs token amount addr = do
     foldM (\res (atrTxHash -> txId) -> (res <|>) <$> (getTxUtxo txId <&> findOutput txId . turOutputs)) Nothing history
     where
         findOutput txId outs = const (Just txId) =<< find (\o -> turoAddress o == addr && valueOf (turoAmount o) cs token == amount) outs
+
+verifyAssetFast :: CurrencySymbol -> TokenName -> [(Address, Integer)] -> IO [Either Address (Address, Integer, Cardano.Api.TxId)]
+verifyAssetFast cs token recepients = do
+    history <- getAssetTxs cs token
+    go recepients history
+    where
+        go :: [(Address, Integer)] -> [AssetTxsResponse] -> IO [Either Address (Address, Integer, Cardano.Api.TxId)]
+        -- end of recepients list
+        go [] _ = pure []
+
+        -- end of token history
+        go rs [] = pure $ map (Left . fst) rs
+
+        go rs ((atrTxHash -> txId) : hs) = do
+            pairs <- map (\o -> (turoAddress o, valueOf (turoAmount o) cs token)) . turOutputs <$> getTxUtxo txId
+            let res = map (\(a,b) -> Right (a,b,txId)) $ pairs `union` rs
+            (res <>) <$> go (rs \\ pairs) hs
 
 --------------------------------------------------- Blockfrost API ---------------------------------------------------
 
