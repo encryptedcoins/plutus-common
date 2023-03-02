@@ -12,7 +12,7 @@
 
 module PlutusAppsExtra.Types.Error where
 
-import           Cardano.Api                    (FromJSON, ToJSON, NetworkMagic)
+import           Cardano.Api                    (FromJSON, ToJSON, NetworkMagic, TxValidationErrorInMode, CardanoMode)
 import           Cardano.Node.Emulator          (BalancingError)
 import           Cardano.Wallet.Api.Types       (ApiSerialisedTransaction)
 import           Cardano.Wallet.Primitive.Types (WalletId)
@@ -73,6 +73,7 @@ data BlockfrostError
 
 data SubmitTxToLocalNodeError
     = CantSubmitEmulatorTx CardanoTx
+    | FailedSumbit (TxValidationErrorInMode CardanoMode)
     deriving (Show, Exception)
 
 throwMaybe :: (MonadThrow m, Exception e) => e -> Maybe a -> m a

@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module PlutusAppsExtra.IO.Node where
 
 import           Cardano.Api.Shelley                                 (CardanoMode, ConsensusModeParams (..), EpochSlots (..),
@@ -8,6 +10,7 @@ import           Cardano.Api.Shelley                                 (CardanoMod
 import           Control.Concurrent.STM                              (atomically, newEmptyTMVarIO, putTMVar, takeTMVar)
 import           Control.Monad.Catch                                 (throwM)
 import           Ledger.Tx                                           (CardanoTx (..), SomeCardanoApiTx (..))
+import           Ouroboros.Network.Protocol.LocalTxSubmission.Client (SubmitResult (..))
 import qualified Ouroboros.Network.Protocol.LocalTxSubmission.Client as Net.Tx
 import           PlutusAppsExtra.Types.Error                         (SubmitTxToLocalNodeError (..))
 
@@ -26,7 +29,9 @@ sumbitTxToNodeLocal socketPath networkId (CardanoApiTx (SomeTx txInEra eraInMode
                 , localStateQueryClient   = Nothing
                 , localTxMonitoringClient = Nothing
                 }
-        atomically (takeTMVar resultVar)
+        atomically (takeTMVar resultVar) >>= \case
+            SubmitSuccess -> pure SubmitSuccess
+            SubmitFail reason -> throwM $ FailedSumbit reason
     where
         connctInfo = LocalNodeConnectInfo 
             { localConsensusModeParams = CardanoModeParams $ EpochSlots 0
