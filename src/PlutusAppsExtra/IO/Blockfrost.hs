@@ -8,7 +8,7 @@ module PlutusAppsExtra.IO.Blockfrost where
 import           Cardano.Api                      (NetworkId (..), StakeAddress, TxId, makeStakeAddress)
 import           Cardano.Api.Shelley              (PoolId)
 import           Control.Applicative              ((<|>))
-import           Control.Monad                    (foldM)
+import           Control.Monad                    (foldM, when)
 import           Control.Monad.Catch              (Exception (..), MonadThrow (..))
 import           Control.Monad.IO.Class           (MonadIO (..))
 import           Control.Monad.Trans.Maybe        (MaybeT (..))
@@ -16,7 +16,7 @@ import           Data.Aeson                       (eitherDecodeFileStrict)
 import           Data.Data                        (Proxy (..))
 import           Data.Foldable                    (find)
 import           Data.Functor                     ((<&>))
-import           Data.List                        ((\\), union)
+import           Data.List                        ((\\), intersect)
 import           Data.Maybe                       (listToMaybe)
 import           Data.Text                        (Text)
 import           Ledger                           (Address, AssetClass, CurrencySymbol, StakePubKeyHash (..), TokenName)
@@ -60,11 +60,17 @@ verifyAsset cs token amount addr = do
     where
         findOutput txId outs = const (Just txId) =<< find (\o -> turoAddress o == addr && valueOf (turoAmount o) cs token == amount) outs
 
-verifyAssetFast :: CurrencySymbol -> TokenName -> [(Address, Integer)] -> IO [Either Address (Address, Integer, Cardano.Api.TxId)]
-verifyAssetFast cs token recepients = do
+verifyAssetFast
+    :: CurrencySymbol
+    -> TokenName
+    -> [(Address, Integer)]
+    -> Maybe ([(Address, Integer, TxId)] -> IO ()) -- Function to save intermidiate results
+    -> IO [Either Address (Address, Integer, Cardano.Api.TxId)]
+verifyAssetFast cs token recepients saveIntermidiate = do
     history <- getAssetTxs cs token
     go recepients history
     where
+        total = length recepients
         go :: [(Address, Integer)] -> [AssetTxsResponse] -> IO [Either Address (Address, Integer, Cardano.Api.TxId)]
         -- end of recepients list
         go [] _ = pure []
@@ -74,8 +80,11 @@ verifyAssetFast cs token recepients = do
 
         go rs ((atrTxHash -> txId) : hs) = do
             pairs <- map (\o -> (turoAddress o, valueOf (turoAmount o) cs token)) . turOutputs <$> getTxUtxo txId
-            let res = map (\(a,b) -> Right (a,b,txId)) $ pairs `union` rs
-            (res <>) <$> go (rs \\ pairs) hs
+            let res = map (\(a,b) -> (a,b,txId)) $ pairs `intersect` rs
+                currentCounter = total - length rs
+            maybe (pure ()) ($ res) saveIntermidiate
+            putStrLn $ show currentCounter <> "/" <> show total
+            (map Right res <>) <$> go (rs \\ pairs) hs
 
 --------------------------------------------------- Blockfrost API ---------------------------------------------------
 
