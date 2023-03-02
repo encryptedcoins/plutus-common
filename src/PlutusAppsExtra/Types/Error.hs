@@ -49,6 +49,7 @@ data MkTxError
     | UnbuildableTxOut
     | UnbuildableExportTx
     | UnbuildableUnbalancedTx
+    | UnparsableMetadata
     deriving (Show, Exception, Eq, Generic, FromJSON, ToJSON)
 
 data BalanceExternalTxError 

@@ -13,8 +13,9 @@ module PlutusAppsExtra.Utils.Tx where
 import qualified Cardano.Api                            as C
 import qualified Cardano.Api.Byron                      as Byron
 import           Cardano.Api.Shelley                    (AnyCardanoEra (..), AsType (..), CardanoEra (..), ConsensusMode (..),
-                                                         EraInMode (..), InAnyCardanoEra (..), SerialiseAsCBOR (..), Tx (..),
-                                                         toEraInMode, toShelleyMetadata)
+                                                         EraInMode (..), InAnyCardanoEra (..), SerialiseAsCBOR (..), ToJSON,
+                                                         Tx (..), TxMetadataJsonSchema, metadataFromJson, toEraInMode,
+                                                         toShelleyMetadata)
 import           Cardano.Chain.UTxO                     (ATxAux (..))
 import qualified Cardano.Crypto.DSIGN                   as Crypto
 import qualified Cardano.Ledger.Alonzo.Data             as Alonzo
@@ -30,6 +31,8 @@ import           Cardano.Wallet.LocalClient.ExportTx    (ExportTx (..), export)
 import           Cardano.Wallet.Primitive.Types.Tx      (SealedTx, cardanoTxIdeallyNoLaterThan, sealedTxFromCardano')
 import           Control.FromSum                        (eitherToMaybe, fromMaybe)
 import           Control.Lens                           (At (at), (&), (?~))
+import           Control.Monad.Catch                    (MonadThrow (throwM))
+import           Data.Aeson                             (ToJSON (..))
 import           Data.Aeson.Extras                      (encodeByteString, tryDecode)
 import           Data.Functor                           ((<&>))
 import           Data.Maybe.Strict                      (maybeToStrictMaybe)
@@ -41,6 +44,7 @@ import           Ledger.Tx                              (CardanoTx (..), SomeCar
 import           Ouroboros.Consensus.Shelley.Eras       (StandardAlonzo, StandardBabbage, StandardShelley)
 import           Plutus.V1.Ledger.Bytes                 (bytes, fromBytes)
 import           Plutus.V2.Ledger.Api                   (fromBuiltin, toBuiltin)
+import           PlutusAppsExtra.Types.Error            (MkTxError (..))
 import           Text.Hex                               (decodeHex)
 
 ------------------------ Export/Import of transactions -------------------------
@@ -70,9 +74,14 @@ cardanoTxToSealedTx = \case
     (CardanoApiTx (SomeTx tx _)) -> Just $ sealedTxFromCardano' tx
     _                            -> Nothing
 
-addMetadataToCardanoTx  :: CardanoTx -> Maybe C.TxMetadata -> CardanoTx
-addMetadataToCardanoTx ctx Nothing = ctx
-addMetadataToCardanoTx ctx (Just (C.TxMetadata meta)) = cardanoTxMap onTx onSomeTx ctx
+addMetadataToCardanoTx :: (MonadThrow m, ToJSON a) => CardanoTx -> Maybe a -> TxMetadataJsonSchema -> m CardanoTx
+addMetadataToCardanoTx ctx Nothing _ = pure ctx 
+addMetadataToCardanoTx ctx (Just val) schema = case metadataFromJson schema (toJSON val) of
+    Left _     -> throwM UnparsableMetadata
+    Right meta -> pure $ addMetadataToCardanoTx' ctx meta
+    
+addMetadataToCardanoTx'  :: CardanoTx -> C.TxMetadata -> CardanoTx
+addMetadataToCardanoTx' ctx (C.TxMetadata meta) = cardanoTxMap onTx onSomeTx ctx
     where
         metadataBs = serialiseToCBOR $ C.TxMetadata meta
         metadataShelley = maybeToStrictMaybe $ Just $ Shelley.Metadata $ toShelleyMetadata meta
