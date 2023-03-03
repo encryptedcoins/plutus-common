@@ -37,6 +37,8 @@ import           PlutusAppsExtra.Utils.Blockfrost (AccDelegationHistoryResponse 
 import           Servant.API                      (Capture, Get, Header, JSON, QueryParam, (:<|>) ((:<|>)), (:>))
 import           Servant.Client                   (BaseUrl (..), ClientM, Scheme (..), client, mkClientEnv, runClientM)
 import qualified Servant.Client                   as Servant
+import Control.Lens.Tuple ( Field3(_3) ) 
+import Control.Lens ((^.))
 
 class (Monad m, MonadIO m, MonadThrow m) => HasBlockfrost m where
     getBfToken   :: m BfToken
@@ -81,18 +83,17 @@ verifyAssetFast :: HasBlockfrost m
     -> TokenName
     -> [(Address, Integer)]
     -> Maybe ([(Address, Integer, TxId)] -> IO ()) -- Function to save intermidiate results
+    -> [(Address, Integer, Cardano.Api.TxId)]      -- Already verified addresses
     -> m [Either Address (Address, Integer, Cardano.Api.TxId)]
-verifyAssetFast cs token recepients saveIntermidiate = do
-    history <- getAssetTxs cs token
-    go recepients history
+verifyAssetFast cs token recepients saveIntermidiate verified = do
+        history <- getAssetTxs cs token
+        go recepients $ filter ((`notElem` map (^. _3) verified) . atrTxHash) history
     where
         total = length recepients
         -- end of recepients list
         go [] _ = pure []
-
         -- end of token history
         go rs [] = pure $ map (Left . fst) rs
-
         go rs ((atrTxHash -> txId) : hs) = do
             pairs <- map (\o -> (turoAddress o, valueOf (turoAmount o) cs token)) . turOutputs <$> getTxUtxo txId
             let res = map (\(a,b) -> (a,b,txId)) $ pairs `intersect` rs
