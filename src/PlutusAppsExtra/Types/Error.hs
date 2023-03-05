@@ -12,7 +12,7 @@
 
 module PlutusAppsExtra.Types.Error where
 
-import           Cardano.Api                    (FromJSON, ToJSON)
+import           Cardano.Api                    (FromJSON, ToJSON, NetworkMagic, TxValidationErrorInMode, CardanoMode)
 import           Cardano.Node.Emulator          (BalancingError)
 import           Cardano.Wallet.Api.Types       (ApiSerialisedTransaction)
 import           Cardano.Wallet.Primitive.Types (WalletId)
@@ -49,6 +49,7 @@ data MkTxError
     | UnbuildableTxOut
     | UnbuildableExportTx
     | UnbuildableUnbalancedTx
+    | UnparsableMetadata
     deriving (Show, Exception, Eq, Generic, FromJSON, ToJSON)
 
 data BalanceExternalTxError 
@@ -66,8 +67,13 @@ data WalletError
     | AddressDoesntCorrespondToPubKey Address
     deriving (Show, Exception)
 
+data BlockfrostError
+    = UnknownNetworkMagic NetworkMagic
+    deriving (Show, Exception)
+
 data SubmitTxToLocalNodeError
     = CantSubmitEmulatorTx CardanoTx
+    | FailedSumbit (TxValidationErrorInMode CardanoMode)
     deriving (Show, Exception)
 
 throwMaybe :: (MonadThrow m, Exception e) => e -> Maybe a -> m a

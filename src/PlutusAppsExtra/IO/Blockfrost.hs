@@ -1,13 +1,19 @@
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators    #-}
-{-# LANGUAGE ViewPatterns     #-}
+{-# LANGUAGE AllowAmbiguousTypes  #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns         #-}
 
 module PlutusAppsExtra.IO.Blockfrost where
 
-import           Cardano.Api                      (NetworkId (..), StakeAddress, TxId, makeStakeAddress)
+import           Cardano.Api                      (NetworkId (..), NetworkMagic (..), StakeAddress, TxId, makeStakeAddress)
 import           Cardano.Api.Shelley              (PoolId)
 import           Control.Applicative              ((<|>))
+import           Control.Exception                (throw)
+import           Control.Lens                     ((^.))
+import           Control.Lens.Tuple               (Field3 (_3))
 import           Control.Monad                    (foldM)
 import           Control.Monad.Catch              (Exception (..), MonadThrow (..))
 import           Control.Monad.IO.Class           (MonadIO (..))
@@ -16,14 +22,14 @@ import           Data.Aeson                       (eitherDecodeFileStrict)
 import           Data.Data                        (Proxy (..))
 import           Data.Foldable                    (find)
 import           Data.Functor                     ((<&>))
-import           Data.List                        ((\\), union)
+import           Data.List                        (intersect, (\\))
 import           Data.Maybe                       (listToMaybe)
 import           Data.Text                        (Text)
 import           Ledger                           (Address, AssetClass, CurrencySymbol, StakePubKeyHash (..), TokenName)
 import           Ledger.Value                     (AssetClass (..), valueOf)
 import           Network.HTTP.Client              (HttpException (..), newManager)
 import           Network.HTTP.Client.TLS          (tlsManagerSettings)
-import           PlutusAppsExtra.Types.Error      (ConnectionError (..))
+import           PlutusAppsExtra.Types.Error      (BlockfrostError (UnknownNetworkMagic), ConnectionError (..))
 import           PlutusAppsExtra.Utils.Address    (spkhToStakeCredential)
 import           PlutusAppsExtra.Utils.Blockfrost (AccDelegationHistoryResponse (..), AssetHistoryResponse, AssetTxsResponse (..),
                                                    Bf (..), BfOrder (..), TxDelegationsCertsResponse, TxUTxoResponseOutput (..),
@@ -39,79 +45,94 @@ portBf :: Int
 portBf = 80
 
 getAddressFromStakePubKeyHash :: NetworkId -> PoolId -> StakePubKeyHash -> IO (Maybe Address)
-getAddressFromStakePubKeyHash net poolId spkh = runMaybeT $ do
-    history <- MaybeT $ sequence $ getAccountDelegationHistory . makeStakeAddress net <$> spkhToStakeCredential spkh
-    txHash <- MaybeT $ pure $ adhrTxHash <$> find ((== poolId) . adhrPoolId) history
-    MaybeT $ fmap turiAddress . listToMaybe . turInputs <$> getTxUtxo txHash
+getAddressFromStakePubKeyHash network poolId spkh = runMaybeT $ do
+    history <- MaybeT $ sequence $ getAccountDelegationHistory network . makeStakeAddress network <$> spkhToStakeCredential spkh
+    txHash  <- MaybeT $ pure $ adhrTxHash <$> find ((== poolId) . adhrPoolId) history
+    MaybeT $ fmap turiAddress . listToMaybe . turInputs <$> getTxUtxo network txHash
 
-getStakeAddressLastPool :: StakeAddress -> IO (Maybe PoolId)
-getStakeAddressLastPool stakeAddr = fmap adhrPoolId . listToMaybe <$> getAccountDelegationHistory stakeAddr
+getStakeAddressLastPool :: NetworkId -> StakeAddress -> IO (Maybe PoolId)
+getStakeAddressLastPool network stakeAddr = fmap adhrPoolId . listToMaybe <$> getAccountDelegationHistory network stakeAddr
 
-getAddressFromStakeAddress :: StakeAddress -> IO (Maybe Address)
-getAddressFromStakeAddress stakeAddr = do
-    txId <- fmap adhrTxHash . listToMaybe <$> getAccountDelegationHistory stakeAddr
-    maybe (pure Nothing) (fmap (fmap turiAddress . listToMaybe . turInputs) . getTxUtxo) txId
+getAddressFromStakeAddress :: NetworkId -> StakeAddress -> IO (Maybe Address)
+getAddressFromStakeAddress network stakeAddr = do
+    txId <- fmap adhrTxHash . listToMaybe <$> getAccountDelegationHistory network stakeAddr
+    maybe (pure Nothing) (fmap (fmap turiAddress . listToMaybe . turInputs) . getTxUtxo network) txId
 
 -- find tx id where address have minted specific amount of asset
-verifyAsset :: CurrencySymbol -> TokenName -> Integer -> Address -> IO (Maybe TxId)
-verifyAsset cs token amount addr = do
-    history <- getAssetTxs cs token
-    foldM (\res (atrTxHash -> txId) -> (res <|>) <$> (getTxUtxo txId <&> findOutput txId . turOutputs)) Nothing history
+verifyAsset :: NetworkId -> CurrencySymbol -> TokenName -> Integer -> Address -> IO (Maybe TxId)
+verifyAsset network cs token amount addr = do
+    history <- getAssetTxs network cs token
+    foldM (\res (atrTxHash -> txId) -> (res <|>) <$> (getTxUtxo network txId <&> findOutput txId . turOutputs)) Nothing history
     where
         findOutput txId outs = const (Just txId) =<< find (\o -> turoAddress o == addr && valueOf (turoAmount o) cs token == amount) outs
 
-verifyAssetFast :: CurrencySymbol -> TokenName -> [(Address, Integer)] -> IO [Either Address (Address, Integer, Cardano.Api.TxId)]
-verifyAssetFast cs token recepients = do
-    history <- getAssetTxs cs token
-    go recepients history
+verifyAssetFast 
+    :: NetworkId
+    -> CurrencySymbol
+    -> TokenName
+    -> [(Address, Integer)]
+    -> Maybe ([(Address, Integer, TxId)] -> IO ()) -- Function to save intermidiate results
+    -> [(Address, Integer, Cardano.Api.TxId)]      -- Already verified addresses
+    -> IO [Either Address (Address, Integer, Cardano.Api.TxId)]
+verifyAssetFast network cs token recepients saveIntermidiate verified = do
+        history <- getAssetTxs network cs token
+        go recepients $ filter ((`notElem` map (^. _3) verified) . atrTxHash) history
     where
-        go :: [(Address, Integer)] -> [AssetTxsResponse] -> IO [Either Address (Address, Integer, Cardano.Api.TxId)]
+        total = length recepients
         -- end of recepients list
         go [] _ = pure []
-
         -- end of token history
         go rs [] = pure $ map (Left . fst) rs
-
         go rs ((atrTxHash -> txId) : hs) = do
-            pairs <- map (\o -> (turoAddress o, valueOf (turoAmount o) cs token)) . turOutputs <$> getTxUtxo txId
-            let res = map (\(a,b) -> Right (a,b,txId)) $ pairs `union` rs
-            (res <>) <$> go (rs \\ pairs) hs
+            pairs <- map (\o -> (turoAddress o, valueOf (turoAmount o) cs token)) . turOutputs <$> getTxUtxo network txId
+            let res = map (\(a,b) -> (a,b,txId)) $ pairs `intersect` rs
+                currentCounter = total - length rs
+            liftIO $ maybe (pure ()) ($ res) saveIntermidiate
+            liftIO $ putStrLn $ show currentCounter <> "/" <> show total
+            (map Right res <>) <$> go (rs \\ pairs) hs
 
 --------------------------------------------------- Blockfrost API ---------------------------------------------------
 
-getTxUtxo :: TxId -> IO TxUtxoResponse
-getTxUtxo txId = getFromEndpointBF $ withBfToken $ \t -> getBfTxUtxo t $ Bf txId
+getTxUtxo :: NetworkId -> TxId -> IO TxUtxoResponse
+getTxUtxo network txId = getFromEndpointBF network $ withBfToken $ \t -> getBfTxUtxo t $ Bf txId
 
-getAccountDelegationHistory :: StakeAddress -> IO [AccDelegationHistoryResponse]
-getAccountDelegationHistory addr = getFromEndpointBF $ withBfToken $ \t -> getBfAccDelegationHistory t (Bf addr) (Just Desc)
+getAccountDelegationHistory :: NetworkId -> StakeAddress -> IO [AccDelegationHistoryResponse]
+getAccountDelegationHistory network addr = getFromEndpointBF network $ withBfToken $ \t -> 
+        getBfAccDelegationHistory t (Bf addr) (Just Desc)
 
-getAssetTxs :: CurrencySymbol -> TokenName -> IO [AssetTxsResponse]
-getAssetTxs cs name = go 1
+getAssetTxs :: NetworkId -> CurrencySymbol -> TokenName -> IO [AssetTxsResponse]
+getAssetTxs network cs name = go 1
     where go n = do
-            res <- getFromEndpointBF $ withBfToken $ \t -> getBfAssetTxs t (Bf $ AssetClass (cs, name)) (Just n)
+            res <- getFromEndpointBF network $ withBfToken $ \t -> getBfAssetTxs t (Bf $ AssetClass (cs, name)) (Just n)
             case res of
                 [] -> pure []
                 xs -> (xs <>) <$> go (n + 1)
 
-getAssetHistory :: CurrencySymbol -> TokenName -> IO [AssetHistoryResponse]
-getAssetHistory cs name = getFromEndpointBF $ withBfToken $ \t -> getBfAssetHistory t (Bf $ AssetClass (cs, name))
+getAssetHistory :: NetworkId -> CurrencySymbol -> TokenName -> IO [AssetHistoryResponse]
+getAssetHistory network cs name = getFromEndpointBF network $ withBfToken $ \t -> getBfAssetHistory t (Bf $ AssetClass (cs, name))
 
 type BfToken = Maybe Text
 
 withBfToken :: (BfToken -> ClientM a) -> ClientM a
 withBfToken ma = liftIO (eitherDecodeFileStrict tokenFilePath) >>= either error (ma . Just)
 
-getFromEndpointBF :: ClientM a -> IO a
-getFromEndpointBF endpoint = do
-    manager <- newManager tlsManagerSettings
-    responseOrError <- runClientM
+getFromEndpointBF :: NetworkId -> ClientM a -> IO a
+getFromEndpointBF network endpoint = do
+    manager <- liftIO $ newManager tlsManagerSettings
+    responseOrError <- liftIO $ runClientM
         endpoint
-        (mkClientEnv manager (BaseUrl Http "cardano-preview.blockfrost.io"  portBf ""))
+        (mkClientEnv manager (BaseUrl Http ("cardano-" <> bfNetwork <> ".blockfrost.io")  portBf ""))
     case responseOrError of
         Left (Servant.ConnectionError (fromException -> Just (HttpExceptionRequest r c)))
                        -> throwM (ConnectionError r c)
         Left err       -> throwM err
         Right response -> pure response
+    where
+        bfNetwork = case network of
+            Mainnet                  -> "mainnet"
+            Testnet (NetworkMagic 1) -> "preprod"
+            Testnet (NetworkMagic 2) -> "preview"
+            Testnet m                -> throw $ UnknownNetworkMagic m
 
 type BlockfrostAPI = "api" :> "v0" :>
     (    GetAccDelegationHistory
