@@ -39,9 +39,14 @@ unspentTxOutFromRef ref = do
 getUtxosWithTokensBetweenSlots :: IO ()
 getUtxosWithTokensBetweenSlots = do
     let name = TokenName "ENCS"
+    res <- Kupo.getUtxosWithTokensBetweenSlots name 15_000_000_000_000 11981184 11981184
+    print res
+
+failedParsing :: IO ()
+failedParsing = do
+    let name = TokenName "ENCS"
     res <- Kupo.getUtxosWithTokensBetweenSlots name 15_000_000_000_000 11979189 11979189
     mapM_ (\x -> print x >> putStrLn "\n\n\n\n") res
-    print $ length res
 
 veryLongTest :: IO ()
 veryLongTest = getUtxosAt "addr_test1wqr4uz0tp75fu8wrg6gm83t20aphuc9vt6n8kvu09ctkugq6ch8kj"
