@@ -57,7 +57,8 @@ stakeCredToSpkh :: Cred.StakeCredential StandardCrypto -> StakePubKeyHash
 stakeCredToSpkh (Cred.KeyHashObj hash) = StakePubKeyHash $ transKeyHash hash
 
 verifyAssetTest :: IO (Maybe TxId)
-verifyAssetTest = verifyAsset 
+verifyAssetTest = verifyAsset
+    (Testnet $ NetworkMagic 2)
     (CurrencySymbol $ toBuiltin $ fromJust $ T.decodeHex "4cd1187e477d56e419c354f1e4c7997a736dfc5e095a2511aba0f75d")
     ""
     1 

@@ -20,7 +20,7 @@ import           Data.Functor                  ((<&>))
 import qualified Data.Text                     as T
 import           Ledger                        (Address (..), Datum (..), DatumFromQuery (..), DatumHash (..), Language (..),
                                                 PubKeyHash, Script, ScriptHash (..), TxId (..), TxOutRef (..), Validator (..),
-                                                ValidatorHash (..), Value, Versioned (..))
+                                                ValidatorHash (..), Value, Versioned (..), Slot (Slot))
 import qualified Ledger.Ada                    as Ada
 import qualified Ledger.Value                  as Value
 import           Plutus.V1.Ledger.Api          (Credential (..), StakingCredential (..), fromBuiltin, toBuiltin)
@@ -151,3 +151,11 @@ instance ToHttpApiData (Kupo ScriptHash) where
 
 deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo ValidatorHash)
 deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo DatumHash)
+
+data KupoWildCard = KupoWildCard
+
+instance ToHttpApiData KupoWildCard where
+    toUrlPiece _ = "*"
+
+instance ToHttpApiData (Kupo Slot) where
+    toUrlPiece (Kupo (Slot i)) = T.pack $ show i
