@@ -30,6 +30,7 @@ import           PlutusTx.Builtins             (BuiltinByteString)
 import           Servant.API                   (ToHttpApiData (..))
 import           Text.Hex                      (decodeHex, encodeHex)
 
+
 ------------------------------------------- Newtype to avoid orphans -------------------------------------------
 
 newtype Kupo a = Kupo a
@@ -55,14 +56,22 @@ data KupoDecoratedTxOut
 
 ----------------------------------------------- FromJSON instances -----------------------------------------------
 
-instance FromJSON KupoUTXO where
+instance {-# OVERLAPPING #-} FromJSON (Maybe KupoUTXO) where
     parseJSON j = ($ j) $ withObject "Kupo UTXO" $ \o -> do
         refId  <- o .: "transaction_id" <&> TxId
         refIdX <- o .: "output_index"
-        txOut <- parseJSON j
-        pure $ Kupo (TxOutRef refId refIdX, txOut)
+        parseJSON j >>= \case
+            Just txOut -> pure $ Just $ Kupo (TxOutRef refId refIdX, txOut)
+            _          -> pure Nothing
 
-instance FromJSON KupoDecoratedTxOut where
+-- instance FromJSON KupoUTXO where
+--     parseJSON j = ($ j) $ withObject "Kupo UTXO" $ \o -> do
+--         refId  <- o .: "transaction_id" <&> TxId
+--         refIdX <- o .: "output_index"
+--         txOut <- parseJSON j
+--         pure $ Kupo (TxOutRef refId refIdX, txOut)
+
+instance {-# OVERLAPPING #-} FromJSON (Maybe KupoDecoratedTxOut) where
     parseJSON = withObject "KupoDecoratedTxOut" $ \o -> do
         addr      <- (o .: "address") >>= maybe (fail "bech32ToAddress") pure . bech32ToAddress
         Kupo val  <- o .: "value"
@@ -82,11 +91,37 @@ instance FromJSON KupoDecoratedTxOut where
             J.String sh -> Just . ScriptHash <$> toBbs sh
             _           -> fail "script hash"
         case addressCredential addr of
-            PubKeyCredential pkh -> pure $ KupoPublicKeyDecoratedTxOut pkh sc val datum script
-            ScriptCredential vh -> do
-                datum' <- maybe (fail "script txOut without datum") pure datum
-                pure $ KupoScriptDecoratedTxOut vh sc val datum' script
+            PubKeyCredential pkh -> pure $ Just $ KupoPublicKeyDecoratedTxOut pkh sc val datum script
+            ScriptCredential vh -> case datum of
+                Just datum' -> pure $ Just $ KupoScriptDecoratedTxOut vh sc val datum' script
+                _           -> pure Nothing
         where toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex
+
+-- instance FromJSON KupoDecoratedTxOut where
+--     parseJSON = withObject "KupoDecoratedTxOut" $ \o -> do
+--         addr      <- (o .: "address") >>= maybe (fail "bech32ToAddress") pure . bech32ToAddress
+--         Kupo val  <- o .: "value"
+--         datumHash <- o .: "datum_hash" >>= \case
+--             J.Null        -> pure Nothing
+--             J.String hash -> Just . DatumHash <$> toBbs hash
+--             _             -> fail "datum hash"
+--         datum <- case datumHash of
+--             Nothing -> pure Nothing
+--             Just dh  -> o .: "datum_type" >>= \case
+--                 J.String "hash"   -> pure $ Just (dh, DatumInBody)
+--                 J.String "inline" -> pure $ Just (dh, DatumInline)
+--                 _                 -> fail "datum type"
+--         let sc = addressStakingCredential addr
+--         script    <- o .: "script_hash" >>= \case
+--             J.Null      -> pure Nothing
+--             J.String sh -> Just . ScriptHash <$> toBbs sh
+--             _           -> fail "script hash"
+--         case addressCredential addr of
+--             PubKeyCredential pkh -> pure $ KupoPublicKeyDecoratedTxOut pkh sc val datum script
+--             ScriptCredential vh -> do
+--                 datum' <- maybe (fail "script txOut without datum") pure datum
+--                 pure $ KupoScriptDecoratedTxOut vh sc val datum' script
+--         where toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex
 
 instance FromJSON (Kupo (Versioned Script)) where
     parseJSON = withObject "Kupo Versioned Script" $ \o -> do

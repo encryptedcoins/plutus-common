@@ -42,6 +42,7 @@ getUtxosWithTokensBetweenSlots = do
     res <- Kupo.getUtxosWithTokensBetweenSlots name 15_000_000_000_000 11981184 11981184
     print res
 
+-- ScriptDecoratedTxOut wuthout datum
 failedParsing :: IO ()
 failedParsing = do
     let name = TokenName "ENCS"

@@ -1,10 +1,11 @@
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE PatternSynonyms  #-}
-{-# LANGUAGE RecordWildCards  #-}
-{-# LANGUAGE TupleSections    #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators    #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE PatternSynonyms   #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE TypeOperators     #-}
 
 module PlutusAppsExtra.IO.ChainIndex.Kupo where
 
@@ -12,7 +13,7 @@ import           Control.Monad                    (join, (<=<))
 import           Data.Coerce                      (coerce)
 import           Data.Data                        (Proxy (..))
 import qualified Data.Map                         as Map
-import           Data.Maybe                       (listToMaybe)
+import           Data.Maybe                       (catMaybes, listToMaybe)
 import           Ledger                           (Address (..), Datum (..), DatumHash (..), DecoratedTxOut (..), Script,
                                                    ScriptHash (..), Slot, TokenName, TxOutRef (..), Validator (..),
                                                    ValidatorHash (..), Versioned (..))
@@ -20,7 +21,7 @@ import           Ledger.Value                     (Value (getValue))
 import           Network.HTTP.Client              (HttpExceptionContent, Request)
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
-import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoDecoratedTxOut (..), KupoUTXOs, KupoWildCard (..))
+import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoDecoratedTxOut (..), KupoUTXO, KupoUTXOs, KupoWildCard (..))
 import qualified PlutusAppsExtra.Utils.Kupo       as Kupo
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
 import qualified PlutusTx.AssocMap                as PAM
@@ -63,14 +64,14 @@ pattern KupoConnectionError :: Request -> HttpExceptionContent -> ConnectionErro
 pattern KupoConnectionError req content <- ConnectionErrorOnPort 1442 req content
 
 type GetUtxosAt         =
-    "matches" :> Capture "pattern" (Kupo Address) :> QueryFlag "unspent" :> Get '[JSON] KupoUTXOs
+    "matches" :> Capture "pattern" (Kupo Address) :> QueryFlag "unspent" :> Get '[JSON] [Maybe KupoUTXO]
 type UnspetTxOutFromRef =
-    "matches" :> Capture "pattern" (Kupo TxOutRef) :> QueryFlag "unspent" :> Get '[JSON] [KupoDecoratedTxOut]
+    "matches" :> Capture "pattern" (Kupo TxOutRef) :> QueryFlag "unspent" :> Get '[JSON] [Maybe KupoDecoratedTxOut]
 type GetAllUtxosBetweenSlots =
     "matches" :> Capture "pattern" KupoWildCard
               :> QueryParam "created_after"  (Kupo Slot)
               :> QueryParam "created_before" (Kupo Slot)
-              :> Get '[JSON] KupoUTXOs
+              :> Get '[JSON] [Maybe KupoUTXO]
 type GetScriptByHash    =
     "scripts" :> Capture "script hash" (Kupo ScriptHash) :> Get '[JSON] (Maybe (Kupo (Versioned Script)))
 type GetValidatorByHash =
@@ -78,16 +79,16 @@ type GetValidatorByHash =
 type GetDatumByHash     =
     "datums"  :> Capture "datum hash" (Kupo DatumHash) :> Get '[JSON] (Kupo Datum)
 
-getKupoUtxosAt             :: Kupo Address       -> ClientM KupoUTXOs
-getKupoUnspentTxOutFromRef :: Kupo TxOutRef      -> ClientM [KupoDecoratedTxOut]
-getAllKupoUtxosBetweenSlots    :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> ClientM KupoUTXOs
-getKupoScriptByHash        :: Kupo ScriptHash    -> ClientM (Maybe (Kupo (Versioned Script)))
-getKupoValidatorByHash     :: Kupo ValidatorHash -> ClientM (Maybe (Kupo (Versioned Validator)))
-getKupoDatumByHash         :: Kupo DatumHash     -> ClientM (Kupo Datum)
+getKupoUtxosAt              :: Kupo Address       -> ClientM KupoUTXOs
+getKupoUnspentTxOutFromRef  :: Kupo TxOutRef      -> ClientM [KupoDecoratedTxOut]
+getAllKupoUtxosBetweenSlots :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> ClientM KupoUTXOs
+getKupoScriptByHash         :: Kupo ScriptHash    -> ClientM (Maybe (Kupo (Versioned Script)))
+getKupoValidatorByHash      :: Kupo ValidatorHash -> ClientM (Maybe (Kupo (Versioned Validator)))
+getKupoDatumByHash          :: Kupo DatumHash     -> ClientM (Kupo Datum)
 (getKupoUtxosAt, getKupoUnspentTxOutFromRef, getAllKupoUtxosBetweenSlots, getKupoScriptByHash, getKupoValidatorByHash, getKupoDatumByHash)
-    = ((`getKupoUtxosAt_` True)
-      ,(`getKupoUnspentTxOutFromRef_` True)
-      ,getAllKupoUtxosBetweenSlots_ KupoWildCard
+    = (fmap catMaybes <$> (`getKupoUtxosAt_` True)
+      ,fmap catMaybes <$> (`getKupoUnspentTxOutFromRef_` True)
+      ,\f t -> catMaybes <$> getAllKupoUtxosBetweenSlots_ KupoWildCard f t
       ,getKupoScriptByHash_
       ,getKupoValidatorByHash_
       ,getKupoDatumByHash_
