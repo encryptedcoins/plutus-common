@@ -74,6 +74,7 @@ data BlockfrostError
 data SubmitTxToLocalNodeError
     = CantSubmitEmulatorTx CardanoTx
     | FailedSumbit (TxValidationErrorInMode CardanoMode)
+    | NoConnectionToLocalNode
     deriving (Show, Exception)
 
 throwMaybe :: (MonadThrow m, Exception e) => e -> Maybe a -> m a

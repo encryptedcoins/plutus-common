@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase          #-}
 
 module PlutusAppsExtra.IO.Node where
 
@@ -8,7 +8,8 @@ import           Cardano.Api.Shelley                                 (CardanoMod
                                                                       NetworkId, TxInMode (..), TxValidationErrorInMode,
                                                                       connectToLocalNode)
 import           Control.Concurrent.STM                              (atomically, newEmptyTMVarIO, putTMVar, takeTMVar)
-import           Control.Monad.Catch                                 (throwM)
+import           Control.Monad.Catch                                 (Exception (fromException), handle, throwM)
+import           GHC.IO.Exception                                    (IOErrorType (NoSuchThing), IOException (..))
 import           Ledger.Tx                                           (CardanoTx (..), SomeCardanoApiTx (..))
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Client (SubmitResult (..))
 import qualified Ouroboros.Network.Protocol.LocalTxSubmission.Client as Net.Tx
@@ -19,11 +20,11 @@ sumbitTxToNodeLocal
     -> NetworkId
     -> CardanoTx
     -> IO (Net.Tx.SubmitResult (TxValidationErrorInMode CardanoMode))
-sumbitTxToNodeLocal socketPath networkId (CardanoApiTx (SomeTx txInEra eraInMode)) = do
+sumbitTxToNodeLocal socketPath networkId (CardanoApiTx (SomeTx txInEra eraInMode)) = handleConnectionAbscence $ do
         resultVar <- newEmptyTMVarIO
         _ <- connectToLocalNode
             connctInfo
-            LocalNodeClientProtocols 
+            LocalNodeClientProtocols
                 { localChainSyncClient    = NoLocalChainSyncClient
                 , localTxSubmissionClient = Just (localTxSubmissionClientSingle resultVar)
                 , localStateQueryClient   = Nothing
@@ -33,14 +34,19 @@ sumbitTxToNodeLocal socketPath networkId (CardanoApiTx (SomeTx txInEra eraInMode
             SubmitSuccess -> pure SubmitSuccess
             SubmitFail reason -> throwM $ FailedSumbit reason
     where
-        connctInfo = LocalNodeConnectInfo 
+        connctInfo = LocalNodeConnectInfo
             { localConsensusModeParams = CardanoModeParams $ EpochSlots 0
             , localNodeNetworkId       = networkId
             , localNodeSocketPath      = socketPath
             }
         localTxSubmissionClientSingle resultVar =
-            Net.Tx.LocalTxSubmissionClient 
+            Net.Tx.LocalTxSubmissionClient
             $ pure $ Net.Tx.SendMsgSubmitTx (TxInMode txInEra eraInMode) $ \result -> do
                 atomically $ putTMVar resultVar result
                 pure (Net.Tx.SendMsgDone ())
 sumbitTxToNodeLocal _ _ etx = throwM $ CantSubmitEmulatorTx etx
+
+handleConnectionAbscence :: IO a -> IO a
+handleConnectionAbscence = handle $ \e -> case fromException e of
+    Just IOError{ioe_type = NoSuchThing} -> throwM NoConnectionToLocalNode
+    _ -> throwM e
