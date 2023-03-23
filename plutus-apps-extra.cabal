@@ -51,6 +51,7 @@ library
       PlutusAppsExtra.Utils.Kupo
       PlutusAppsExtra.Utils.Orphans
       PlutusAppsExtra.Utils.Tx
+      PlutusAppsExtra.Utils.Scripts
       PlutusAppsExtra.Utils.Servant
     build-depends:
       base                          >= 4.9 && < 5,
@@ -70,6 +71,7 @@ library
       cardano-node-emulator                  -any,
       cardano-streaming                      -any,
       cardano-wallet-core                    -any,
+      cborg                                  -any,
       containers                             -any,
       cryptonite                             -any,
       data-default                           -any,
@@ -93,6 +95,7 @@ library
       openapi3                               -any,
       ouroboros-consensus-shelley            -any,
       ouroboros-network                      -any,
+      plutus-core                            -any,
       plutus-chain-index                     -any,
       plutus-chain-index-core                -any,
       plutus-contract                        -any,
