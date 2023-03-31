@@ -51,7 +51,7 @@ balanceExternalTx params walletUTXO changeAddress lookups cons = do
             utxoIndex
             cAddress
             utxoProvider
-            (const $ throwM MakeAutoBalancedTxError)
+            (throwM . MakeAutoBalancedTxError)
             cardanoBuildTx
 
     return $ CardanoApiTx $ SomeTx tx BabbageEraInCardanoMode
