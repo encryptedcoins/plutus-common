@@ -82,7 +82,7 @@ data RestoredWallet = RestoredWallet
     { name             :: Text
     , mnemonicSentence :: SomeMnemonic
     , passphrase       :: Passphrase "user"
-    } deriving (Show, Generic)
+    } deriving (Show, Eq, Generic)
 
 instance FromJSON RestoredWallet where
     parseJSON = withObject "Restore wallet" $ \v -> do
@@ -155,9 +155,13 @@ ownAddressesBech32 = do
     as <- getFromEndpointWallet $ Client.listAddresses  Client.addressClient (ApiT walletId) Nothing
     pure $ map (^. key "id"._String) as
 
+-- Get all value at a wallet
+getWalletValue :: (HasWallet m, HasChainIndex m) => m Value
+getWalletValue = mconcat . fmap _decoratedTxOutValue . Map.elems <$> getWalletUtxos
+
 -- Get all ada at a wallet
 getWalletAda :: (HasWallet m, HasChainIndex m) => m Ada
-getWalletAda = mconcat . fmap (Ada.fromValue . _decoratedTxOutValue) . Map.elems <$> getWalletUtxos
+getWalletAda = Ada.fromValue <$> getWalletValue
 
 -- Get all utxos at a wallet
 getWalletUtxos :: (HasWallet m, HasChainIndex m) => m MapUTXO
