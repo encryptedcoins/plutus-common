@@ -138,26 +138,25 @@ useAsCollateralTx' (Just ref) = do
         Just o  -> do
             let lookups = unspentOutputs (Map.fromList [(ref, o)])
                 cons    = mustUseOutputAsCollateral ref
-            put constr  { 
+            put constr  {
                             txConstructorResult = res <&&> Just (lookups, cons),
                             txConstructorLookups = Map.delete ref utxos
                         }
             return $ Just ref
 
-utxoProducedTx :: ToData datum => Address -> Value -> Maybe datum -> TransactionBuilder ()
+utxoProducedTx :: Address -> Value -> Maybe (TxOutDatum Datum) -> TransactionBuilder ()
 utxoProducedTx addr val dat = do
     constr <- get
     let res = txConstructorResult constr
-        d    = fmap (TxOutDatumHash . Datum . toBuiltinData) dat
-        c    = singleton (MustPayToAddress addr d Nothing val)
+        c    = singleton (MustPayToAddress addr dat Nothing val)
     put constr { txConstructorResult = res <&&> Just (mempty, c) }
 
-utxoProducedPublicKeyTx :: ToData datum => PubKeyHash -> Maybe StakingCredential -> Value -> Maybe datum -> TransactionBuilder ()
+utxoProducedPublicKeyTx :: PubKeyHash -> Maybe StakingCredential -> Value -> Maybe (TxOutDatum Datum) -> TransactionBuilder ()
 utxoProducedPublicKeyTx pkh skc val dat =
     let addr = Address (PubKeyCredential pkh) skc
     in utxoProducedTx addr val dat
 
-utxoProducedScriptTx :: ToData datum => ValidatorHash -> Maybe StakingCredential -> Value -> datum -> TransactionBuilder ()
+utxoProducedScriptTx :: ValidatorHash -> Maybe StakingCredential -> Value -> TxOutDatum Datum -> TransactionBuilder ()
 utxoProducedScriptTx vh skc val dat =
     let addr = Address (ScriptCredential vh) skc
     in utxoProducedTx addr val (Just dat)
@@ -188,21 +187,21 @@ validatedInSlotIntervalTx startSlot endSlot = do
     let res  = txConstructorResult constr
     put constr { txConstructorResult = res <&&> Just (mempty, mustValidateInSlotRange $ interval startSlot endSlot) }
 
-postValidatorTx :: ToData datum => Address -> Versioned Validator -> Maybe datum -> Value -> TransactionBuilder ()
+postValidatorTx :: Address -> Versioned Validator -> Maybe (TxOutDatum Datum) -> Value -> TransactionBuilder ()
 postValidatorTx addr vld dat val = do
     constr <- get
     let res     = txConstructorResult constr
         hash    = validatorHash vld
-        c       = mustPayToAddressWithReferenceValidator addr hash (fmap (TxOutDatumHash . Datum . toBuiltinData) dat) val
+        c       = mustPayToAddressWithReferenceValidator addr hash dat val
         lookups = otherScript vld
     put constr { txConstructorResult = res <&&> Just (lookups, c)}
 
-postMintingPolicyTx :: ToData datum => Address -> Versioned MintingPolicy -> Maybe datum -> Value -> TransactionBuilder ()
+postMintingPolicyTx :: Address -> Versioned MintingPolicy -> Maybe (TxOutDatum Datum) -> Value -> TransactionBuilder ()
 postMintingPolicyTx addr mp dat val = do
     constr <- get
     let res     = txConstructorResult constr
         hash    = mintingPolicyHash mp
-        c       = mustPayToAddressWithReferenceMintingPolicy addr hash (fmap (TxOutDatumHash . Datum . toBuiltinData) dat) val
+        c       = mustPayToAddressWithReferenceMintingPolicy addr hash dat val
         lookups = mintingPolicy mp
     put constr { txConstructorResult = res <&&> Just (lookups, c)}
 
