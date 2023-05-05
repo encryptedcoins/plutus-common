@@ -6,8 +6,10 @@ module PlutusAppsExtra.IO.ChainIndex where
 
 import           Control.Monad.IO.Class               (MonadIO (..))
 import           Data.Aeson                           (FromJSON)
+import qualified Data.Map                             as Map
 import           GHC.Generics                         (Generic)
-import           Ledger                               (Address, TxOutRef, DecoratedTxOut)
+import           Ledger                               (Ada, Address, DecoratedTxOut (..), TxOutRef, Value)
+import qualified Ledger.Ada                           as Ada
 import qualified PlutusAppsExtra.IO.ChainIndex.Kupo   as Kupo
 import qualified PlutusAppsExtra.IO.ChainIndex.Plutus as Plutus
 import           PlutusAppsExtra.Utils.ChainIndex     (MapUTXO)
@@ -22,6 +24,12 @@ getUtxosAt :: HasChainIndex m => Address -> m MapUTXO
 getUtxosAt addr = getChainIndex >>= \case
     Plutus -> liftIO $ Plutus.getUtxosAt addr
     Kupo   -> liftIO $   Kupo.getUtxosAt addr
+
+getValueAt :: HasChainIndex m => Address -> m Value
+getValueAt addr = mconcat . fmap _decoratedTxOutValue . Map.elems <$> getUtxosAt addr
+
+getAdaAt :: HasChainIndex m => Address -> m Ada
+getAdaAt addr = Ada.fromValue <$> getValueAt addr
 
 getUnspentTxOutFromRef :: HasChainIndex m => TxOutRef -> m (Maybe DecoratedTxOut)
 getUnspentTxOutFromRef txOutRef = getChainIndex >>= \case

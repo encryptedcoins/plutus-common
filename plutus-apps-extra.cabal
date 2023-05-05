@@ -46,8 +46,9 @@ library
       PlutusAppsExtra.Types.Tx
       PlutusAppsExtra.Utils.Address
       PlutusAppsExtra.Utils.ChainIndex
-      PlutusAppsExtra.Utils.Blockfrost
       PlutusAppsExtra.Utils.Crypto
+      PlutusAppsExtra.Utils.Datum
+      PlutusAppsExtra.Utils.Blockfrost
       PlutusAppsExtra.Utils.Kupo
       PlutusAppsExtra.Utils.Orphans
       PlutusAppsExtra.Utils.Tx
