@@ -51,9 +51,10 @@ library
       PlutusAppsExtra.Utils.Blockfrost
       PlutusAppsExtra.Utils.Kupo
       PlutusAppsExtra.Utils.Orphans
-      PlutusAppsExtra.Utils.Tx
       PlutusAppsExtra.Utils.Scripts
       PlutusAppsExtra.Utils.Servant
+      PlutusAppsExtra.Utils.Tx
+      PlutusAppsExtra.Utils.Value
     build-depends:
       base                          >= 4.9 && < 5,
       base16-bytestring                      -any,
