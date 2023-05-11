@@ -1,12 +1,14 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric  #-}
 {-# LANGUAGE LambdaCase     #-}
+{-# LANGUAGE TupleSections  #-}
 
 module PlutusAppsExtra.IO.ChainIndex where
 
 import           Control.Monad.IO.Class               (MonadIO (..))
 import           Data.Aeson                           (FromJSON)
 import qualified Data.Map                             as Map
+import           Data.Maybe                           (catMaybes)
 import           GHC.Generics                         (Generic)
 import           Ledger                               (Ada, Address, DecoratedTxOut (..), TxOutRef, Value)
 import qualified Ledger.Ada                           as Ada
@@ -35,3 +37,6 @@ getUnspentTxOutFromRef :: HasChainIndex m => TxOutRef -> m (Maybe DecoratedTxOut
 getUnspentTxOutFromRef txOutRef = getChainIndex >>= \case
     Plutus -> liftIO $ Plutus.getUnspentTxOutFromRef txOutRef
     Kupo   -> liftIO $   Kupo.getUnspentTxOutFromRef txOutRef
+
+getMapUTXOFromRefs :: HasChainIndex m => [TxOutRef] -> m MapUTXO
+getMapUTXOFromRefs = fmap (Map.fromList . catMaybes) . mapM (\input -> fmap (input,) <$> getUnspentTxOutFromRef input)
