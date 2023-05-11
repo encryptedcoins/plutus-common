@@ -42,5 +42,5 @@ getUnspentTxOutFromRef txOutRef = getChainIndex >>= \case
     Plutus -> liftIO $ Plutus.getUnspentTxOutFromRef txOutRef
     Kupo   -> liftIO $   Kupo.getUnspentTxOutFromRef txOutRef
 
-getMapUTXOFromRefs :: HasChainIndex m => [TxOutRef] -> m MapUTXO
-getMapUTXOFromRefs = fmap (Map.fromList . catMaybes) . mapM (\input -> fmap (input,) <$> getUnspentTxOutFromRef input)
+getMapUtxoFromRefs :: HasChainIndex m => [TxOutRef] -> m MapUTXO
+getMapUtxoFromRefs = fmap (Map.fromList . catMaybes) . mapM (\input -> fmap (input,) <$> getUnspentTxOutFromRef input)
