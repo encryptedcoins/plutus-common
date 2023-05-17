@@ -34,6 +34,7 @@ import           Control.Concurrent                                 (threadDelay
 import           Control.Lens                                       ((<&>), (^.), (^?))
 import           Control.Monad                                      (unless, void)
 import           Control.Monad.Catch                                (MonadThrow (..))
+import           Control.Monad.Extra                                (concatMapM)
 import           Control.Monad.IO.Class                             (MonadIO (..))
 import           Data.Aeson                                         (FromJSON (..), ToJSON (..), eitherDecode, withObject, (.:))
 import           Data.Aeson.Lens                                    (_String, key)
@@ -60,7 +61,7 @@ import           Ledger.Tx.CardanoAPI                               (unspentOutp
 import           Ledger.Typed.Scripts                               (ValidatorTypes (..))
 import           Ledger.Value                                       (leq)
 import           Network.HTTP.Client                                (HttpExceptionContent, Request)
-import           PlutusAppsExtra.IO.ChainIndex                      (HasChainIndex(..), getUtxosAt)
+import           PlutusAppsExtra.IO.ChainIndex                      (HasChainIndex(..), getUtxosAt, getRefsAt)
 import           PlutusTx.IsData                                    (FromData, ToData)
 import           PlutusTx.Prelude                                   (zero, (-))
 import           Prelude                                            hiding ((-))
@@ -162,6 +163,9 @@ getWalletValue = mconcat . fmap _decoratedTxOutValue . Map.elems <$> getWalletUt
 -- Get all ada at a wallet
 getWalletAda :: (HasWallet m, HasChainIndex m) => m Ada
 getWalletAda = Ada.fromValue <$> getWalletValue
+
+getWalletRefs :: (HasWallet m, HasChainIndex m) => m [TxOutRef]
+getWalletRefs = ownAddresses >>= concatMapM getRefsAt
 
 -- Get all utxos at a wallet
 getWalletUtxos :: (HasWallet m, HasChainIndex m) => m MapUTXO
