@@ -1,13 +1,14 @@
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE NoImplicitPrelude   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module PlutusAppsExtra.Utils.Datum where
 
+import           Ledger                           (DatumFromQuery (..), DatumHash, datumHash)
 import           Ledger.Constraints.TxConstraints (TxOutDatum (..))
 import           Plutus.ChainIndex                (OutputDatum (..))
 import           Plutus.V1.Ledger.Scripts         (Datum (..))
 import           PlutusTx.IsData.Class            (ToData (toBuiltinData))
-import           PlutusTx.Prelude
+import           PlutusTx.Prelude                 (Bool (False), Eq ((==)), ($), (.))
 
 toDatumHash :: ToData datum => datum -> TxOutDatum Datum
 toDatumHash = TxOutDatumHash . Datum . toBuiltinData
@@ -25,3 +26,9 @@ hashedUnit = toDatumHash ()
 
 inlinedUnit :: TxOutDatum Datum
 inlinedUnit = toInlineDatum ()
+
+inlinedUnitInTxOut :: (DatumHash, DatumFromQuery)
+inlinedUnitInTxOut = (unitHash, DatumInline (Datum $ toBuiltinData ()))
+
+unitHash :: DatumHash
+unitHash = datumHash $ Datum $ toBuiltinData ()

@@ -132,6 +132,31 @@ library
       uuid                                   -any,
     hs-source-dirs: src
 
+library plutus-apps-extra-test-utils
+  import: lang
+  exposed-modules:
+    PlutusAppsExtra.Test.Utils
+  other-modules:
+    PlutusAppsExtra.Test.Utils.Gen
+    PlutusAppsExtra.Test.Utils.Tx
+  build-depends:
+    base                          >= 4.9 && < 5,
+    aeson                                  -any,
+    bytestring                             -any,
+    cardano-api                            -any,
+    cardano-node-emulator                  -any,
+    containers                             -any,
+    data-default                           -any,
+    hspec                                  -any,
+    mtl                                    -any,
+    mtl                                    -any,
+    plutus-apps-extra                      -any,
+    plutus-ledger                          -any,
+    plutus-ledger-api                      -any,
+    random                                 -any,
+    QuickCheck                             -any,
+  hs-source-dirs: test
+
 test-suite plutus-apps-extra-test
   Type:                 exitcode-stdio-1.0
   Default-Language:     Haskell2010
