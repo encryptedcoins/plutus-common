@@ -8,7 +8,7 @@ import           Ledger                 (Address (..), PaymentPubKey (..), PubKe
 import qualified Plutus.V1.Ledger.Bytes as LedgerBytes
 import           Plutus.V2.Ledger.Api   (Credential (..), StakingCredential (StakingHash), toBuiltin)
 import           System.Random          (randomIO, randomRIO)
-import           Test.QuickCheck        (Arbitrary (..), choose, generate)
+import           Test.QuickCheck        (Arbitrary (..), generate)
 
 genPubKeyAddress :: IO Address
 genPubKeyAddress = do
