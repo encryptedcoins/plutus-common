@@ -1,5 +1,6 @@
 module PlutusAppsExtra.Test.Utils
     ( module PlutusAppsExtra.Test.Utils.Gen
+    , module PlutusAppsExtra.Test.Utils.Script
     , module PlutusAppsExtra.Test.Utils.Tx
     , getProtocolParams
     ) where
@@ -9,6 +10,7 @@ import           Cardano.Node.Emulator          (Params (..), pParamsFromProtoco
 import           Data.Aeson                     (eitherDecodeFileStrict)
 import           Data.Default                   (def)
 import           PlutusAppsExtra.Test.Utils.Gen
+import           PlutusAppsExtra.Test.Utils.Script
 import           PlutusAppsExtra.Test.Utils.Tx
 
 getProtocolParams :: FilePath -> NetworkId -> IO Params
