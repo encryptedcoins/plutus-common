@@ -1,11 +1,7 @@
 module PlutusAppsExtra.Utils.Scripts where
 
-import           Cardano.Codec.Cbor    (toStrictByteString)
 import qualified Codec.CBOR.Decoding   as CBOR
-import           Codec.CBOR.Encoding   (encodeBytes)
-import           Codec.CBOR.Read       (deserialiseFromBytes)
 import           Codec.Serialise       (Serialise (encode), decode, deserialise, serialise)
-import           Control.FromSum       (eitherToMaybe)
 import qualified Data.ByteString.Lazy  as LBS
 import           Data.ByteString.Short (ShortByteString)
 import qualified Data.ByteString.Short as SBS
@@ -18,13 +14,10 @@ import           Text.Hex              (Text, decodeHex, encodeHex)
 import qualified UntypedPlutusCore     as UPLC
 
 validatorToCBOR :: Validator -> Text
-validatorToCBOR = encodeHex . toStrictByteString . encodeBytes . LBS.toStrict  . serialise
+validatorToCBOR = encodeHex . SBS.fromShort . serialiseUPLC . coerce
 
 validatorFromCBOR :: Text -> Maybe Validator
-validatorFromCBOR txt = do
-    bs  <- decodeHex txt
-    res <- eitherToMaybe $ deserialiseFromBytes CBOR.decodeBytes $ LBS.fromStrict bs
-    deserialise $ LBS.fromStrict $ snd res
+validatorFromCBOR = fmap (coerce . deserialiseUPLC . SBS.toShort) . decodeHex
 
 mintingPolicyToCBOR :: MintingPolicy -> Text
 mintingPolicyToCBOR = encodeHex . SBS.fromShort . serialiseUPLC . coerce
