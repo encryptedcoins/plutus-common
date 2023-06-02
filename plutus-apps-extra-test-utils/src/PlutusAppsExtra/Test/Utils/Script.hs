@@ -13,8 +13,8 @@ import           Data.Either                                       (isRight)
 import           Plutus.V1.Ledger.Api                              (CostModelApplyError (CMInternalReadError), Data,
                                                                     EvaluationContext, EvaluationError, ExBudget, LogOutput,
                                                                     MintingPolicy (..), ProtocolVersion (ProtocolVersion), Script,
-                                                                    Validator (..), VerboseMode (..), evaluateScriptCounting,
-                                                                    mkEvaluationContext)
+                                                                    ScriptContext, Validator (..), VerboseMode (..),
+                                                                    evaluateScriptCounting, mkEvaluationContext, toData)
 import           PlutusCore.Evaluation.Machine.ExBudgetingDefaults (defaultCostModelParams)
 import           Test.Hspec                                        (Expectation, expectationFailure, shouldSatisfy)
 
@@ -24,11 +24,11 @@ testScipt p script plutusData = case runScriptVerbose p script plutusData of
     Right (output, Left err) -> expectationFailure $ show err <> "\nOutput:\n" <> show output
     Right (_, res)           -> res `shouldSatisfy` isRight 
 
-testMintingPolicy :: Params -> MintingPolicy -> [Data] -> Expectation
-testMintingPolicy p (MintingPolicy mp) = testScipt p mp
+testMintingPolicy :: Params -> MintingPolicy -> Data -> ScriptContext -> Expectation
+testMintingPolicy p (MintingPolicy mp) red sctx = testScipt p mp [red, toData sctx]
 
-testValidator :: Params -> Validator -> [Data] -> Expectation
-testValidator p (Validator v) = testScipt p v
+testValidator :: Params -> Validator -> Data -> Data -> ScriptContext -> Expectation
+testValidator p (Validator v) dat red sctx = testScipt p v [dat, red, toData sctx]
 
 runScript :: VerboseMode -> Params -> Script -> [Data] -> Either CostModelApplyError (LogOutput, Either EvaluationError ExBudget)
 runScript v p script plutusData = do
