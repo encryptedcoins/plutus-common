@@ -18,12 +18,14 @@ import           Data.Map                         (Map)
 import qualified Data.Map                         as Map
 import           Data.Maybe                       (catMaybes)
 import           GHC.Generics                     (Generic)
-import           Ledger                           (Address, DecoratedTxOut (..), POSIXTime, TxOutRef (..))
+import           Ledger                           (Address, DecoratedTxOut (..), POSIXTime, TxOutRef (..), SomeCardanoApiTx)
 import           Network.HTTP.Client              (HttpExceptionContent, Request)
 import           Plutus.ChainIndex                (ChainIndexTx, Page (..), PageQuery)
 import           Plutus.ChainIndex.Api            (UtxoAtAddressRequest (..), UtxosResponse (..))
 import qualified Plutus.ChainIndex.Client         as Client
+import           Plutus.ChainIndex.Types          (ChainIndexTx(_citxCardanoTx)) 
 import           Plutus.V1.Ledger.Address         (Address (addressCredential))
+import           Plutus.V2.Ledger.Tx              (TxId)
 import           PlutusAppsExtra.IO.Time          (currentTime)
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
@@ -117,3 +119,9 @@ getUnspentTxOutFromRef = handle404 (pure Nothing) . fmap Just . getFromEndpointC
 utxoRefsAt :: PageQuery TxOutRef -> Address -> IO UtxosResponse
 utxoRefsAt pageQ =
     getFromEndpointChainIndex . Client.getUtxoSetAtAddress . UtxoAtAddressRequest (Just pageQ) . addressCredential
+
+getChainIndexTxFromId :: TxId -> IO (Maybe ChainIndexTx)
+getChainIndexTxFromId = handle404 (pure Nothing) . fmap Just . getFromEndpointChainIndex . Client.getTx
+
+getTxFromId :: TxId -> IO (Maybe SomeCardanoApiTx)
+getTxFromId = fmap (>>= _citxCardanoTx) . getChainIndexTxFromId
