@@ -38,7 +38,8 @@ import           Data.Functor                           ((<&>))
 import           Data.Maybe.Strict                      (maybeToStrictMaybe)
 import qualified Data.Set                               as Set
 import           Data.Text                              (Text)
-import           Ledger                                 (PubKey (..), Signature (..), Tx (..), cardanoTxMap, signatures)
+import           Ledger                                 (PubKey (..), Signature (..), Tx (..), cardanoTxMap, signatures, 
+                                                         getCardanoTxProducedOutputs, TxOut (getTxOut))
 import           Ledger.Constraints                     (UnbalancedTx)
 import           Ledger.Tx                              (CardanoTx (..), SomeCardanoApiTx (..))
 import           Ouroboros.Consensus.Shelley.Eras       (StandardAlonzo, StandardBabbage, StandardShelley)
@@ -46,6 +47,7 @@ import           Plutus.V1.Ledger.Bytes                 (bytes, fromBytes)
 import           Plutus.V2.Ledger.Api                   (fromBuiltin, toBuiltin)
 import           PlutusAppsExtra.Types.Error            (MkTxError (..))
 import           Text.Hex                               (decodeHex)
+import qualified Data.Map as Map
 
 ------------------------ Export/Import of transactions -------------------------
 
@@ -141,3 +143,8 @@ addCardanoTxSignature pubKey sig = cardanoTxMap addSignatureTx addSignatureCarda
             . Crypto.rawDeserialiseSigDSIGN
             . fromBuiltin
             $ getSignature sig
+
+------------------------------------- Other -------------------------------------
+
+getTxDatums :: CardanoTx -> [C.TxOutDatum C.CtxTx C.BabbageEra]
+getTxDatums = map ((\(C.TxOut _ _ c _) -> c) . getTxOut) . Map.elems . getCardanoTxProducedOutputs
