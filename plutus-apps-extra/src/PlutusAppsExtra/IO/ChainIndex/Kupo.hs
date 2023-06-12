@@ -70,6 +70,12 @@ getUnspentUtxosWithAssetBetweenSlots asset createdAfter createdBefore = getKupoU
         f (_, out) = assetClassValueOf (Kupo._decoratedTxOutValue out) asset > 0
         getUnspentKupoUtxos = getFromEndpointKupo $ getAllKupoUtxosBetweenSlots (Kupo <$> createdAfter) (Kupo <$> createdBefore) True
 
+getSpentUtxosWithAssetBetweenSlots :: AssetClass -> Maybe Slot -> Maybe Slot -> IO MapUTXO
+getSpentUtxosWithAssetBetweenSlots asset createdBefore spentAfter = getKupoUtxosWith getUnspentKupoUtxos f
+    where
+        f (_, out) = assetClassValueOf (Kupo._decoratedTxOutValue out) asset > 0
+        getUnspentKupoUtxos = getFromEndpointKupo $ getAllKupoUtxosBetweenSlots (Kupo <$> createdBefore) (Kupo <$> spentAfter) True
+
 getKupoResponseByStakeKeyBetweenSlots :: Maybe Slot -> Maybe Slot -> PubKeyHash -> IO [KupoResponse]
 getKupoResponseByStakeKeyBetweenSlots createdAfter createdBefore pkh = getFromEndpointKupo $ getKupoResponseBetweenSlotsCC
     (Kupo <$> createdAfter)
@@ -99,6 +105,7 @@ type KupoAPI
     =    GetUtxosAt
     :<|> UnspetTxOutFromRef
     :<|> GetUtxosBetweenSlots
+    :<|> GetSpentUtxosBetweenSlots
     :<|> GetKupoResponseBetweenSlots
     :<|> GetSpentKupoResponseBetweenSlots
     :<|> GetScriptByHash
@@ -120,6 +127,12 @@ type GetUtxosBetweenSlots =
               :> QueryParam "created_after"  (Kupo Slot)
               :> QueryParam "created_before" (Kupo Slot)
               :> QueryFlag "unspent"
+              :> Get '[JSON] [Maybe KupoUTXO]
+type GetSpentUtxosBetweenSlots =
+    "matches" :> Capture "pattern" Pattern
+              :> QueryParam "created_before"  (Kupo Slot)
+              :> QueryParam "spent_after" (Kupo Slot)
+              :> QueryFlag "spent"
               :> Get '[JSON] [Maybe KupoUTXO]
 type GetKupoResponseBetweenSlots =
     "matches" :> Capture "pattern" Pattern
@@ -143,17 +156,28 @@ type GetDatumByHash     =
 getKupoUtxosAt              :: KupoAddress        -> ClientM KupoUTXOs
 getKupoUnspentTxOutFromRef  :: Kupo TxOutRef      -> ClientM [KupoDecoratedTxOut]
 getAllKupoUtxosBetweenSlots :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> ClientM KupoUTXOs
-getKupoResponseBetweenSlotsCC    :: Maybe (Kupo Slot) -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
+getSpentKupoUtxosBetweenSlots ::  Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> ClientM KupoUTXOs
+getKupoResponseBetweenSlotsCC :: Maybe (Kupo Slot) -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
 getKupoResponseBetweenSlotsCS :: Maybe (Kupo Slot) -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
 getKupoScriptByHash         :: Kupo ScriptHash    -> ClientM (Maybe (Kupo (Versioned Script)))
 getKupoValidatorByHash      :: Kupo ValidatorHash -> ClientM (Maybe (Kupo (Versioned Validator)))
 getKupoDatumByHash          :: Kupo DatumHash     -> ClientM (Kupo Datum)
-(getKupoUtxosAt, getKupoUnspentTxOutFromRef, getAllKupoUtxosBetweenSlots, getKupoResponseBetweenSlotsCC, getKupoResponseBetweenSlotsCS, getKupoScriptByHash, getKupoValidatorByHash, getKupoDatumByHash)
+(getKupoUtxosAt
+    , getKupoUnspentTxOutFromRef
+    , getAllKupoUtxosBetweenSlots
+    , getSpentKupoUtxosBetweenSlots
+    , getKupoResponseBetweenSlotsCC
+    , getKupoResponseBetweenSlotsCS
+    , getKupoScriptByHash
+    , getKupoValidatorByHash
+    , getKupoDatumByHash
+    )
     = (fmap catMaybes <$> (`getKupoUtxosAt_` True)
       ,fmap catMaybes <$> (`getKupoUnspentTxOutFromRef_` True)
       ,\f t isUnspent-> catMaybes <$> getKupoUtxosBetweenSlots_ (AddrPattern anyAddress) f t isUnspent
+      ,\f t isSpent-> catMaybes <$> getKupoSpentUtxosBetweenSlots_ (AddrPattern anyAddress) f t isSpent
       ,\f t isUnspent pat -> getKupoResponseBetweenSlotsCC_ pat f t isUnspent
-      ,\f t isUnspent pat -> getKupoResponseBetweenSlotsCS_ pat f t isUnspent
+      ,\f t isSpent pat -> getKupoResponseBetweenSlotsCS_ pat f t isSpent
       ,getKupoScriptByHash_
       ,getKupoValidatorByHash_
       ,getKupoDatumByHash_
@@ -162,6 +186,7 @@ getKupoDatumByHash          :: Kupo DatumHash     -> ClientM (Kupo Datum)
         getKupoUtxosAt_
             :<|> getKupoUnspentTxOutFromRef_
             :<|> getKupoUtxosBetweenSlots_
+            :<|> getKupoSpentUtxosBetweenSlots_
             :<|> getKupoResponseBetweenSlotsCC_
             :<|> getKupoResponseBetweenSlotsCS_
             :<|> getKupoScriptByHash_
