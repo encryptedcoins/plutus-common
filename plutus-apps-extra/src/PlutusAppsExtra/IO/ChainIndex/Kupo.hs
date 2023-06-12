@@ -38,7 +38,11 @@ getUtxosAt = fromKupoUtxos <=< (getFromEndpointKupo . getKupoUtxosAt . mkKupoAdd
 
 getUnspentTxOutFromRef :: TxOutRef -> IO (Maybe DecoratedTxOut)
 getUnspentTxOutFromRef = sequence . listToMaybe . fmap fromKupoDecoratedTxOut <=<
-    (getFromEndpointKupo . getKupoUnspentTxOutFromRef . Kupo)
+    (getFromEndpointKupo . getKupoTxOutFromRef True . Kupo)
+
+getTxOutFromRef :: TxOutRef -> IO (Maybe DecoratedTxOut)
+getTxOutFromRef = sequence . listToMaybe . fmap fromKupoDecoratedTxOut <=<
+    (getFromEndpointKupo . getKupoTxOutFromRef False . Kupo)
 
 getSciptByHash :: ScriptHash -> IO (Maybe (Versioned Script))
 getSciptByHash = fmap coerce . getFromEndpointKupo . getKupoScriptByHash . Kupo
@@ -154,7 +158,7 @@ type GetDatumByHash     =
     "datums"  :> Capture "datum hash" (Kupo DatumHash) :> Get '[JSON] (Kupo Datum)
 
 getKupoUtxosAt              :: KupoAddress        -> ClientM KupoUTXOs
-getKupoUnspentTxOutFromRef  :: Kupo TxOutRef      -> ClientM [KupoDecoratedTxOut]
+getKupoTxOutFromRef             :: Bool -> Kupo TxOutRef      -> ClientM [KupoDecoratedTxOut]
 getAllKupoUtxosBetweenSlots :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> ClientM KupoUTXOs
 getSpentKupoUtxosBetweenSlots ::  Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> ClientM KupoUTXOs
 getKupoResponseBetweenSlotsCC :: Maybe (Kupo Slot) -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
@@ -163,7 +167,7 @@ getKupoScriptByHash         :: Kupo ScriptHash    -> ClientM (Maybe (Kupo (Versi
 getKupoValidatorByHash      :: Kupo ValidatorHash -> ClientM (Maybe (Kupo (Versioned Validator)))
 getKupoDatumByHash          :: Kupo DatumHash     -> ClientM (Kupo Datum)
 (getKupoUtxosAt
-    , getKupoUnspentTxOutFromRef
+    , getKupoTxOutFromRef
     , getAllKupoUtxosBetweenSlots
     , getSpentKupoUtxosBetweenSlots
     , getKupoResponseBetweenSlotsCC
@@ -173,7 +177,7 @@ getKupoDatumByHash          :: Kupo DatumHash     -> ClientM (Kupo Datum)
     , getKupoDatumByHash
     )
     = (fmap catMaybes <$> (`getKupoUtxosAt_` True)
-      ,fmap catMaybes <$> (`getKupoUnspentTxOutFromRef_` True)
+      ,\isUnspent -> fmap catMaybes <$> (`getKupoUnspentTxOutFromRef_` isUnspent)
       ,\f t isUnspent-> catMaybes <$> getKupoUtxosBetweenSlots_ (AddrPattern anyAddress) f t isUnspent
       ,\f t isSpent-> catMaybes <$> getKupoSpentUtxosBetweenSlots_ (AddrPattern anyAddress) f t isSpent
       ,\f t isUnspent pat -> getKupoResponseBetweenSlotsCC_ pat f t isUnspent
