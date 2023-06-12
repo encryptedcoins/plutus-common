@@ -1,0 +1,75 @@
+cabal-version:      3.0
+
+name:               plutus-apps-extra-test
+version:            0.1.0.0
+
+author:             Vladimir Sinyakov
+                    Grigory Petrov
+maintainer:         team@encoins.io
+
+-- Plutus language settings
+common lang
+    default-language:   Haskell2010
+    ghc-options:
+      -fwarn-redundant-constraints
+      -Wall
+      -Widentities
+      -Wincomplete-uni-patterns
+      -Wincomplete-record-updates
+      -Wnoncanonical-monad-instances
+      -Wredundant-constraints
+      
+      -- See Plutus Tx readme
+      -fno-ignore-interface-pragmas
+      -fno-omit-interface-pragmas
+      -fno-specialise
+      -fno-strictness
+      -fobject-code       
+      -fplugin-opt PlutusTx.Plugin:defer-errors
+
+test-suite plutus-apps-extra-test
+  Type:                 exitcode-stdio-1.0
+  Default-Language:     Haskell2010
+  Hs-Source-Dirs:       test
+  Ghc-Options:          -rtsopts
+                        -fplugin-opt PlutusTx.Plugin:defer-errors
+                        -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
+  Main-Is:              Main.hs
+  Other-Modules:        Tests.ChainIndex
+                        Tests.Blockfrost
+                        Tests.Kupo
+                        Tests.OnChain
+                        Tests.Scripts
+                        Tests.Wallet
+  Build-Depends:
+    base                                   -any,
+    aeson                                  -any,
+    bytestring                             -any,
+    cardano-addresses                      -any,
+    cardano-api                            -any,
+    cardano-ledger-alonzo                  -any,
+    cardano-ledger-core                    -any,
+    cardano-node-emulator                  -any,
+    cardano-wallet-core                    -any,
+    containers                             -any,
+    data-default                           -any,
+    from-sum                               -any,
+    generic-arbitrary                      -any,
+    hex-text                               -any,
+    plutus-apps-extra                      -any,
+    plutus-apps-extra-test-utils           -any,
+    plutus-contract                        -any,
+    plutus-core                            -any,
+    plutus-chain-index                     -any,
+    plutus-chain-index-core                -any,
+    plutus-tx-plugin                       -any,
+    plutus-tx                              -any,
+    plutus-tx-extra                        -any,
+    plutus-ledger                          -any,
+    plutus-ledger-api                      -any,
+    plutus-ledger-constraints              -any,
+    plutus-script-utils                    -any,
+    plutus-use-cases                       -any,
+    QuickCheck                             -any,
+    random                                 -any,
+    text                                   -any

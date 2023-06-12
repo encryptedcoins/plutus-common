@@ -1,6 +1,11 @@
 cradle:
   cabal:
-    - path: "src"
+
+    - path: "plutus-apps-extra/src"
       component: "plutus-apps-extra:lib:plutus-apps-extra"
-    - path: "test"
-      component: "plutus-apps-extra:test:plutus-apps-extra-test"
+  
+    - path: "plutus-apps-extra-test-utils/src"
+      component: "plutus-apps-extra-test-utils:lib:plutus-apps-extra-test-utils"
+  
+    - path: "plutus-apps-extra-test/test"
+      component: "plutus-apps-extra-test:test:plutus-apps-extra-test"
