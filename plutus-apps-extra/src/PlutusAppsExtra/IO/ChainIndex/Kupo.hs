@@ -145,7 +145,6 @@ getKupoUnspentTxOutFromRef  :: Kupo TxOutRef      -> ClientM [KupoDecoratedTxOut
 getAllKupoUtxosBetweenSlots :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> ClientM KupoUTXOs
 getKupoResponseBetweenSlotsCC    :: Maybe (Kupo Slot) -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
 getKupoResponseBetweenSlotsCS :: Maybe (Kupo Slot) -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
--- getKupoResponseBetweenSlots :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
 getKupoScriptByHash         :: Kupo ScriptHash    -> ClientM (Maybe (Kupo (Versioned Script)))
 getKupoValidatorByHash      :: Kupo ValidatorHash -> ClientM (Maybe (Kupo (Versioned Validator)))
 getKupoDatumByHash          :: Kupo DatumHash     -> ClientM (Kupo Datum)

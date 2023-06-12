@@ -83,6 +83,7 @@ data KupoDecoratedTxOut
 data KupoResponse = KupoResponse
     { krTransactionId :: TxId
     , krOutputIndex :: TxIx
+    , krAddress :: Address
     , krValue :: Value
     , krDatumHash :: Maybe DatumHash
     -- , krDatumType :: DatumFromQuery
@@ -100,6 +101,7 @@ instance FromJSON KupoResponse where
     parseJSON = withObject "KupoResponse" $ \o -> do
         krTransactionId  <- o .: "transaction_id" <&> TxId
         krOutputIndex <- o .: "output_index"
+        krAddress <-  o .: "address" >>= maybe (fail "bech32ToAddress") pure . bech32ToAddress
         Kupo krValue <- o .: "value"
         krDatumHash <- o .: "datum_hash" >>= \case
             J.Null -> pure Nothing
