@@ -10,7 +10,7 @@
 module PlutusAppsExtra.IO.ChainIndex.Kupo where
 
 import           Control.Exception                (SomeException, try)
-import           Control.FromSum                  (eitherToMaybe)
+import           Control.FromSum                  (eitherToMaybe, maybeToEither)
 import           Control.Monad                    (join, (<=<))
 import           Data.Coerce                      (coerce)
 import           Data.Data                        (Proxy (..))
@@ -18,13 +18,14 @@ import qualified Data.Map                         as Map
 import           Data.Maybe                       (catMaybes, listToMaybe)
 import           Ledger                           (Address (..), Datum (..), DatumHash (..), DecoratedTxOut (..), Script,
                                                    ScriptHash (..), Slot, TokenName, TxOutRef (..), Validator (..),
-                                                   ValidatorHash (..), Versioned (..), AssetClass, PubKeyHash)
+                                                   ValidatorHash (..), Versioned (..), AssetClass, PubKeyHash, CurrencySymbol)
 import           Ledger.Value                     (Value (getValue), assetClassValueOf)
 import           Network.HTTP.Client              (HttpExceptionContent, Request)
 import           Plutus.V1.Ledger.Api             (StakingCredential(..), Credential (PubKeyCredential))
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
-import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoDecoratedTxOut (..), KupoUTXO, KupoUTXOs, KupoAddress, anyAddress, mkAddressWithAnyCred, mkKupoAddress, Pattern (..), KupoResponse)
+import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoDecoratedTxOut (..), KupoUTXO, KupoUTXOs, KupoAddress, anyAddress, 
+                                                   mkAddressWithAnyCred, mkKupoAddress, Pattern (..), KupoResponse, KupoWildCard (..))
 import qualified PlutusAppsExtra.Utils.Kupo       as Kupo
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
 import qualified PlutusTx.AssocMap                as PAM
@@ -64,17 +65,33 @@ getUtxosWithTokenAmountBetweenSlots name amt sFrom sTo = getKupoUtxosWith getKup
 
 -- Get all unspent utxos between specified slots, that contain specified assetClass
 getUnspentUtxosWithAssetBetweenSlots :: AssetClass -> Maybe Slot -> Maybe Slot -> IO MapUTXO
-getUnspentUtxosWithAssetBetweenSlots asset mbSFrom mbSTo = getKupoUtxosWith getUnspentKupoUtxos f
+getUnspentUtxosWithAssetBetweenSlots asset createdAfter createdBefore = getKupoUtxosWith getUnspentKupoUtxos f
     where
         f (_, out) = assetClassValueOf (Kupo._decoratedTxOutValue out) asset > 0
-        getUnspentKupoUtxos = getFromEndpointKupo $ getAllKupoUtxosBetweenSlots (Kupo <$> mbSFrom) (Kupo <$> mbSTo) True
+        getUnspentKupoUtxos = getFromEndpointKupo $ getAllKupoUtxosBetweenSlots (Kupo <$> createdAfter) (Kupo <$> createdBefore) True
 
 getKupoResponseByStakeKeyBetweenSlots :: Maybe Slot -> Maybe Slot -> PubKeyHash -> IO [KupoResponse]
-getKupoResponseByStakeKeyBetweenSlots mbSFrom mbSTo pkh = getFromEndpointKupo $ getKupoResponseBetweenSlots
-    (Kupo <$> mbSFrom)
-    (Kupo <$> mbSTo)
-    True
+getKupoResponseByStakeKeyBetweenSlots createdAfter createdBefore pkh = getFromEndpointKupo $ getKupoResponseBetweenSlotsCC
+    (Kupo <$> createdAfter)
+    (Kupo <$> createdBefore)
+    False
     (AddrPattern $ mkAddressWithAnyCred $ StakingHash $ PubKeyCredential pkh)
+
+getKupoResponseByAssetClassBetweenSlotsCC :: Maybe Slot -> Maybe Slot -> CurrencySymbol -> Maybe TokenName -> IO [KupoResponse]
+getKupoResponseByAssetClassBetweenSlotsCC createdAfter createdBefore cs tokenName 
+    = getFromEndpointKupo $ getKupoResponseBetweenSlotsCC
+        (Kupo <$> createdAfter)
+        (Kupo <$> createdBefore)
+        True
+        (AssetPattern (cs, maybeToEither KupoWildCard tokenName))
+
+getKupoResponseByAssetClassBetweenSlotsCS :: Maybe Slot -> Maybe Slot -> CurrencySymbol -> Maybe TokenName -> IO [KupoResponse]
+getKupoResponseByAssetClassBetweenSlotsCS createdBefore spentAfter cs tokenName 
+    = getFromEndpointKupo $ getKupoResponseBetweenSlotsCS
+        (Kupo <$> createdBefore)
+        (Kupo <$> spentAfter)
+        True
+        (AssetPattern (cs, maybeToEither KupoWildCard tokenName))
 
 --------------------------------------------------- Kupo API ---------------------------------------------------
 
@@ -83,6 +100,7 @@ type KupoAPI
     :<|> UnspetTxOutFromRef
     :<|> GetUtxosBetweenSlots
     :<|> GetKupoResponseBetweenSlots
+    :<|> GetSpentKupoResponseBetweenSlots
     :<|> GetScriptByHash
     :<|> GetValidatorByHash
     :<|> GetDatumByHash
@@ -109,6 +127,12 @@ type GetKupoResponseBetweenSlots =
               :> QueryParam "created_before" (Kupo Slot)
               :> QueryFlag "unspent"
               :> Get '[JSON] [KupoResponse]
+type GetSpentKupoResponseBetweenSlots =
+    "matches" :> Capture "pattern" Pattern
+              :> QueryParam "created_before" (Kupo Slot)
+              :> QueryParam "spent_after"    (Kupo Slot)
+              :> QueryFlag "spent"
+              :> Get '[JSON] [KupoResponse]
 type GetScriptByHash    =
     "scripts" :> Capture "script hash" (Kupo ScriptHash) :> Get '[JSON] (Maybe (Kupo (Versioned Script)))
 type GetValidatorByHash =
@@ -119,17 +143,18 @@ type GetDatumByHash     =
 getKupoUtxosAt              :: KupoAddress        -> ClientM KupoUTXOs
 getKupoUnspentTxOutFromRef  :: Kupo TxOutRef      -> ClientM [KupoDecoratedTxOut]
 getAllKupoUtxosBetweenSlots :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> ClientM KupoUTXOs
-getKupoUtxosBetweenSlots    :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM KupoUTXOs
-getKupoResponseBetweenSlots :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
+getKupoResponseBetweenSlotsCC    :: Maybe (Kupo Slot) -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
+getKupoResponseBetweenSlotsCS :: Maybe (Kupo Slot) -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
+-- getKupoResponseBetweenSlots :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
 getKupoScriptByHash         :: Kupo ScriptHash    -> ClientM (Maybe (Kupo (Versioned Script)))
 getKupoValidatorByHash      :: Kupo ValidatorHash -> ClientM (Maybe (Kupo (Versioned Validator)))
 getKupoDatumByHash          :: Kupo DatumHash     -> ClientM (Kupo Datum)
-(getKupoUtxosAt, getKupoUnspentTxOutFromRef, getAllKupoUtxosBetweenSlots, getKupoUtxosBetweenSlots, getKupoResponseBetweenSlots, getKupoScriptByHash, getKupoValidatorByHash, getKupoDatumByHash)
+(getKupoUtxosAt, getKupoUnspentTxOutFromRef, getAllKupoUtxosBetweenSlots, getKupoResponseBetweenSlotsCC, getKupoResponseBetweenSlotsCS, getKupoScriptByHash, getKupoValidatorByHash, getKupoDatumByHash)
     = (fmap catMaybes <$> (`getKupoUtxosAt_` True)
       ,fmap catMaybes <$> (`getKupoUnspentTxOutFromRef_` True)
-      ,\f t isUnspent-> catMaybes <$> getupoUtxosBetweenSlots_ (AddrPattern anyAddress) f t isUnspent
-      ,\f t isUnspent pat -> catMaybes <$> getupoUtxosBetweenSlots_ pat f t isUnspent
-      ,\f t isUnspent pat -> getKupoResponseBetweenSlots_ pat f t isUnspent
+      ,\f t isUnspent-> catMaybes <$> getKupoUtxosBetweenSlots_ (AddrPattern anyAddress) f t isUnspent
+      ,\f t isUnspent pat -> getKupoResponseBetweenSlotsCC_ pat f t isUnspent
+      ,\f t isUnspent pat -> getKupoResponseBetweenSlotsCS_ pat f t isUnspent
       ,getKupoScriptByHash_
       ,getKupoValidatorByHash_
       ,getKupoDatumByHash_
@@ -137,8 +162,9 @@ getKupoDatumByHash          :: Kupo DatumHash     -> ClientM (Kupo Datum)
     where
         getKupoUtxosAt_
             :<|> getKupoUnspentTxOutFromRef_
-            :<|> getupoUtxosBetweenSlots_
-            :<|> getKupoResponseBetweenSlots_
+            :<|> getKupoUtxosBetweenSlots_
+            :<|> getKupoResponseBetweenSlotsCC_
+            :<|> getKupoResponseBetweenSlotsCS_
             :<|> getKupoScriptByHash_
             :<|> getKupoValidatorByHash_
             :<|> getKupoDatumByHash_ = client (Proxy @KupoAPI)
