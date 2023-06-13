@@ -1,5 +1,7 @@
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -11,7 +13,7 @@ module PlutusAppsExtra.Utils.Blockfrost where
 import           Cardano.Api                   (SerialiseAddress (serialiseAddress), StakeAddress, TxId (..))
 import           Cardano.Api.Shelley           (PoolId)
 import           Control.Monad                 (mzero)
-import           Data.Aeson                    (FromJSON (..), withObject, withText, (.:))
+import           Data.Aeson                    (FromJSON (..), withObject, withText, (.:), ToJSON)
 import qualified Data.Aeson                    as J
 import           Data.Functor                  ((<&>))
 import qualified Data.Text                     as T
@@ -23,6 +25,8 @@ import qualified PlutusTx.AssocMap             as PAM
 import           Servant.API                   (ToHttpApiData (..))
 import qualified Text.Hex                      as T
 import           Text.Read                     (readMaybe)
+import           Deriving.Aeson                (CamelToSnake, CustomJSON (CustomJSON),
+                                                FieldLabelModifier, Generic, StripPrefix)
 
 data AccDelegationHistoryResponse = AccDelegationHistoryResponse
     { adhrActiveEpoch :: Int
@@ -102,13 +106,8 @@ instance FromJSON BfMintingPolarity where
 data AssetTxsResponse = AssetTxsResponse
     { atrTxHash  :: TxId
     , atrTxIndex :: Integer
-    } deriving Show
-
-instance FromJSON AssetTxsResponse where
-    parseJSON = withObject "Specific asset response" $ \o -> do
-        atrTxHash  <- o .: "tx_hash"
-        atrTxIndex <- o .: "tx_index"
-        pure AssetTxsResponse{..}
+    } deriving (Show, Generic)
+      deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "atr", CamelToSnake]] AssetTxsResponse
 
 data AssetHistoryResponse = AssetHistoryResponse
     { ahrTxHash          :: TxId

@@ -11,32 +11,33 @@
 
 module PlutusAppsExtra.Utils.Kupo where
 
-import           Cardano.Api                   (TxIx)
-import           Cardano.Chain.Block           (HeaderHash)
+import           Cardano.Api                   (TxIx (..), NetworkId (Mainnet))
+import           Cardano.Chain.Block           ( HeaderHash )
 import           Codec.Serialise               (deserialise)
-import           Data.Aeson                    (FromJSON (..), withObject, (.:))
+import           Data.Aeson                    (FromJSON (..), withObject, (.:), ToJSON, KeyValue ((.=)))
 import qualified Data.Aeson                    as J
+import qualified Data.Aeson.Key 
 import qualified Data.Aeson.Key                as J
 import qualified Data.Aeson.KeyMap             as J
 import           Data.Bifunctor                (Bifunctor(..))
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.Coerce                   (coerce)
+import           Data.Fixed                    (Fixed(..))
 import           Data.Functor                  ((<&>))
 import qualified Data.Text                     as T
 import           GHC.Generics                  (Generic)
 import           Ledger                        (Address (..), Datum (..), DatumFromQuery (..), DatumHash (..), Language (..),
                                                 PubKeyHash, Script, ScriptHash (..), TxId (..), TxOutRef (..), Validator (..),
-                                                ValidatorHash (..), Value, Versioned (..), Slot (Slot), CurrencySymbol, TokenName)
+                                                ValidatorHash (..), Value, Versioned (..), Slot (Slot), CurrencySymbol, TokenName, noAdaValue)
 import qualified Ledger.Ada                    as Ada
 import qualified Ledger.Value                  as Value
 import           Plutus.V1.Ledger.Api          (Credential (..), StakingCredential (..), fromBuiltin, toBuiltin, CurrencySymbol (..))
-import           PlutusAppsExtra.Utils.Address (bech32ToAddress)
+import           PlutusAppsExtra.Utils.Address (bech32ToAddress, addressToBech32)
 import qualified PlutusTx.AssocMap             as PMap
 import           PlutusTx.Builtins             (BuiltinByteString)
 import           Servant.API                   (ToHttpApiData (..))
 import           Text.Hex                      (decodeHex, encodeHex)
-
-
+import           Ledger.Value                  (flattenValue, TokenName (..))
 ------------------------------------------- Newtype to avoid orphans -------------------------------------------
 
 newtype Kupo a = Kupo a
@@ -50,7 +51,7 @@ mkKupoAddress :: Address -> KupoAddress
 mkKupoAddress Address{..} = (Right addressCredential, maybe (Left KupoWildCard) Right addressStakingCredential)
 
 mkAddressWithAnyCred :: StakingCredential -> KupoAddress
-mkAddressWithAnyCred = (Left KupoWildCard ,) . Right 
+mkAddressWithAnyCred = (Left KupoWildCard ,) . Right
 
 addressWithAnySCred :: Credential -> KupoAddress
 addressWithAnySCred cred = first (const $ Right cred) anyAddress
@@ -114,13 +115,35 @@ instance FromJSON KupoResponse where
         krCreatedAt <- o .: "created_at"
         krSpentAt <- o .: "spent_at"
         pure KupoResponse{..}
-         where toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex
+        where toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex
+
+instance ToJSON KupoResponse where
+    toJSON KupoResponse{..} = J.object
+        ["transaction_id" .= getTxId krTransactionId
+        , "output_index" .= krOutputIndex
+        , "address" .= addressToBech32 Mainnet krAddress
+        , "value" .= J.Object
+            [ "coins" .= (\(MkFixed i) -> i) (Ada.getAda (Ada.fromValue krValue))
+            , "assets" .= J.fromList (map (\(cs, tn, amt) -> 
+                (Data.Aeson.Key.fromText $ encodeHex $ fromBuiltin $ unCurrencySymbol cs <> unTokenName tn, amt)) $ flattenValue (noAdaValue krValue))
+            ]
+        , "datum_hash" .= krDatumHash
+        , "script_hash" .= krScriptHash
+        , "created_at" .= krCreatedAt
+        , "spent_at" .= krSpentAt
+        ]
 
 instance FromJSON SlotWithHeaderHash where
     parseJSON = withObject "KupoResponse" $ \o -> do
         swhhSlot <- fromInteger <$> o .: "slot_no"
         swhhHeaderHash <- o .: "header_hash"
         pure SlotWithHeaderHash{..}
+
+instance ToJSON SlotWithHeaderHash where
+    toJSON SlotWithHeaderHash{..} = J.object
+        ["slot_no" .= toInteger swhhSlot
+        , "header_hash" .= swhhHeaderHash
+        ]
 
 instance {-# OVERLAPPING #-} FromJSON (Maybe KupoUTXO) where
     parseJSON j = ($ j) $ withObject "Kupo UTXO" $ \o -> do
