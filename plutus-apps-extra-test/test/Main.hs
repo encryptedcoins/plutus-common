@@ -13,8 +13,10 @@ module Main where
 import           Prelude
 
 import           Tests.Wallet
+import           Tests.Scripts
 
 main :: IO ()
 main = do
-    res <- test "protocol-params.json"
-    print res
+    let ppFile = "plutus-apps-extra-test/config/protocol-params.json"
+
+    runScriptTest ppFile

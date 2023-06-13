@@ -39,6 +39,7 @@ test-suite plutus-apps-extra-test
                         Tests.Blockfrost
                         Tests.Kupo
                         Tests.OnChain
+                        Tests.Scripts
                         Tests.Wallet
   Build-Depends:
     base                                   -any,
@@ -56,6 +57,7 @@ test-suite plutus-apps-extra-test
     generic-arbitrary                      -any,
     hex-text                               -any,
     plutus-apps-extra                      -any,
+    plutus-apps-extra-test-utils           -any,
     plutus-contract                        -any,
     plutus-core                            -any,
     plutus-chain-index                     -any,

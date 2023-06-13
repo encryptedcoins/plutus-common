@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module PlutusAppsExtra.Utils.Scripts where
 
 import qualified Codec.CBOR.Decoding   as CBOR
@@ -5,29 +7,74 @@ import           Codec.Serialise       (Serialise (encode), decode, deserialise,
 import qualified Data.ByteString.Lazy  as LBS
 import           Data.ByteString.Short (ShortByteString)
 import qualified Data.ByteString.Short as SBS
-import           Data.Coerce           (coerce)
+import           Data.Coerce           (coerce, Coercible)
+import           Data.Maybe            (fromJust)
 import qualified Flat
 import qualified Flat.Decoder          as Flat
 import           Ledger                (MintingPolicy (..), Script (..), Validator (..))
-import           PlutusCore            (DefaultFun, DefaultUni)
+import           Plutus.V2.Ledger.Api  (ToData, toData)
+import           PlutusCore            (DefaultFun, DefaultUni, defaultVersion)
+import           PlutusCore.MkPlc      (mkConstant)
 import           Text.Hex              (Text, decodeHex, encodeHex)
-import qualified UntypedPlutusCore     as UPLC
+import           UntypedPlutusCore     (Program (..), DeBruijn, applyProgram)
+
+type UPLCProgram = Program DeBruijn DefaultUni DefaultFun ()
+
+----------------------- To CBOR -----------------------
+
+scriptToCBOR :: Coercible script UPLCProgram => script -> Text
+scriptToCBOR = encodeHex . SBS.fromShort . serialiseUPLC . coerce
 
 validatorToCBOR :: Validator -> Text
-validatorToCBOR = encodeHex . SBS.fromShort . serialiseUPLC . coerce
-
-validatorFromCBOR :: Text -> Maybe Validator
-validatorFromCBOR = fmap (coerce . deserialiseUPLC . SBS.toShort) . decodeHex
+validatorToCBOR = scriptToCBOR
 
 mintingPolicyToCBOR :: MintingPolicy -> Text
-mintingPolicyToCBOR = encodeHex . SBS.fromShort . serialiseUPLC . coerce
+mintingPolicyToCBOR = scriptToCBOR
+
+----------------------- From CBOR -----------------------
+
+scriptFromCBOR :: Coercible UPLCProgram script => Text -> Maybe script
+scriptFromCBOR = fmap (coerce . deserialiseUPLC . SBS.toShort) . decodeHex
+
+validatorFromCBOR :: Text -> Maybe Validator
+validatorFromCBOR = scriptFromCBOR
+
+unsafeValidatorFromCBOR :: Text -> Validator
+unsafeValidatorFromCBOR = fromJust . validatorFromCBOR
 
 mintingPolicyFromCBOR :: Text -> Maybe MintingPolicy
-mintingPolicyFromCBOR = fmap (coerce . deserialiseUPLC . SBS.toShort) . decodeHex
+mintingPolicyFromCBOR = scriptFromCBOR
+
+unsafeMintingPolicyFromCBOR :: Text -> MintingPolicy
+unsafeMintingPolicyFromCBOR = fromJust . mintingPolicyFromCBOR
+
+--------------- Parameterized from CBOR ------------------
+
+parameterizedScriptFromCBOR :: (ToData par, Coercible UPLCProgram script)
+    => Text -> Maybe (par -> script)
+parameterizedScriptFromCBOR txt = do
+    bs <- decodeHex txt
+    let program = deserialiseUPLC $ SBS.toShort bs
+        p = Program () (defaultVersion ()) . mkConstant ()
+    pure $ \a -> coerce $ program `applyProgram` p (toData a)
+
+parameterizedValidatorFromCBOR :: (ToData a) => Text -> Maybe (a -> Validator)
+parameterizedValidatorFromCBOR = parameterizedScriptFromCBOR
+
+unsafeParameterizedValidatorFromCBOR :: (ToData a) => Text -> a -> Validator
+unsafeParameterizedValidatorFromCBOR = fromJust . parameterizedValidatorFromCBOR
+
+parameterizedMintingPolicyFromCBOR :: (ToData a) => Text -> Maybe (a -> MintingPolicy)
+parameterizedMintingPolicyFromCBOR = parameterizedScriptFromCBOR
+
+unsafeParameterizedMintingPolicyFromCBOR :: (ToData a) => Text -> a -> MintingPolicy
+unsafeParameterizedMintingPolicyFromCBOR = fromJust . parameterizedMintingPolicyFromCBOR
+
+----------------------- Serialisation -----------------------
 
 type SerialisedScript = ShortByteString
 
-serialiseUPLC :: UPLC.Program UPLC.DeBruijn DefaultUni DefaultFun () -> SerialisedScript
+serialiseUPLC :: Program DeBruijn DefaultUni DefaultFun () -> SerialisedScript
 serialiseUPLC =
     -- See Note [Using Flat for serialising/deserialising Script]
     -- Currently, this is off because the old implementation didn't actually work, so we need to be careful
@@ -35,7 +82,7 @@ serialiseUPLC =
     SBS.toShort . LBS.toStrict . serialise . SerialiseViaFlat
 
 -- | Deserialises a 'SerialisedScript' back into an AST.
-deserialiseUPLC :: SerialisedScript -> UPLC.Program UPLC.DeBruijn DefaultUni DefaultFun ()
+deserialiseUPLC :: SerialisedScript -> Program DeBruijn DefaultUni DefaultFun ()
 deserialiseUPLC = unSerialiseViaFlat . deserialise . LBS.fromStrict . SBS.fromShort
     where
         unSerialiseViaFlat (SerialiseViaFlat a) = a

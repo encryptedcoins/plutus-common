@@ -10,11 +10,11 @@ import           Data.Bifunctor                                    (Bifunctor (.
 import qualified Data.ByteString.Lazy                              as LBS
 import qualified Data.ByteString.Short                             as SBS
 import           Data.Either                                       (isRight)
-import           Plutus.V1.Ledger.Api                              (CostModelApplyError (CMInternalReadError), Data,
+import           Plutus.V2.Ledger.Api                              (CostModelApplyError (CMInternalReadError), Data,
                                                                     EvaluationContext, EvaluationError, ExBudget, LogOutput,
                                                                     MintingPolicy (..), ProtocolVersion (ProtocolVersion), Script,
                                                                     ScriptContext, Validator (..), VerboseMode (..),
-                                                                    evaluateScriptCounting, mkEvaluationContext, toData)
+                                                                    evaluateScriptCounting, mkEvaluationContext, toData, ToData)
 import           PlutusCore.Evaluation.Machine.ExBudgetingDefaults (defaultCostModelParams)
 import           Test.Hspec                                        (Expectation, expectationFailure, shouldSatisfy)
 
@@ -24,11 +24,13 @@ testScipt p script plutusData = case runScriptVerbose p script plutusData of
     Right (output, Left err) -> expectationFailure $ show err <> "\nOutput:\n" <> show output
     Right (_, res)           -> res `shouldSatisfy` isRight 
 
-testMintingPolicy :: Params -> MintingPolicy -> Data -> ScriptContext -> Expectation
-testMintingPolicy p (MintingPolicy mp) red sctx = testScipt p mp [red, toData sctx]
+testMintingPolicy :: (ToData redeemer) => Params -> MintingPolicy -> redeemer -> ScriptContext -> Expectation
+testMintingPolicy p (MintingPolicy mp) red sctx = testScipt p mp [toData red, toData sctx]
 
-testValidator :: Params -> Validator -> Data -> Data -> ScriptContext -> Expectation
-testValidator p (Validator v) dat red sctx = testScipt p v [dat, red, toData sctx]
+testValidator :: (ToData datum, ToData redeemer) => Params -> Validator -> datum -> redeemer -> ScriptContext -> Expectation
+testValidator p (Validator v) dat red sctx = testScipt p v [toData dat, toData red, toData sctx]
+
+--------------------------------------------------------------------------------
 
 runScript :: VerboseMode -> Params -> Script -> [Data] -> Either CostModelApplyError (LogOutput, Either EvaluationError ExBudget)
 runScript v p script plutusData = do
