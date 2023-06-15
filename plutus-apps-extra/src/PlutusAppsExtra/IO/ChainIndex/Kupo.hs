@@ -14,18 +14,20 @@ import           Control.FromSum                  (eitherToMaybe, maybeToEither)
 import           Control.Monad                    (join, (<=<))
 import           Data.Coerce                      (coerce)
 import           Data.Data                        (Proxy (..))
+import           Data.Function                    (on)
+import qualified Data.List                        as L
 import qualified Data.Map                         as Map
-import           Data.Maybe                       (catMaybes, listToMaybe)
+import           Data.Maybe                       (catMaybes, listToMaybe, fromMaybe)
 import           Ledger                           (Address (..), Datum (..), DatumHash (..), DecoratedTxOut (..), Script,
                                                    ScriptHash (..), Slot, TokenName, TxOutRef (..), Validator (..),
                                                    ValidatorHash (..), Versioned (..), AssetClass, PubKeyHash, CurrencySymbol)
-import           Ledger.Value                     (Value (getValue), assetClassValueOf)
+import           Ledger.Value                     (Value (..), assetClassValueOf)
 import           Network.HTTP.Client              (HttpExceptionContent, Request)
 import           Plutus.V1.Ledger.Api             (StakingCredential(..), Credential (PubKeyCredential))
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoDecoratedTxOut (..), KupoUTXO, KupoUTXOs, KupoAddress, anyAddress,
-                                                   mkAddressWithAnyCred, mkKupoAddress, Pattern (..), KupoResponse, KupoWildCard (..))
+                                                   mkAddressWithAnyCred, mkKupoAddress, Pattern (..), KupoResponse (..), KupoWildCard (..))
 import qualified PlutusAppsExtra.Utils.Kupo       as Kupo
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
 import qualified PlutusTx.AssocMap                as PAM
@@ -110,6 +112,20 @@ getKupoResponseBetweenSlots createdAfter createdBefore
         (Kupo <$> createdBefore)
         False
         WildCardPattern
+
+getAssetDistributionBeforeSlot :: CurrencySymbol -> Maybe TokenName -> Maybe Slot -> IO (Map.Map Address Integer)
+getAssetDistributionBeforeSlot cs mbTokenName slot = do
+        unspentResponses <- getKupoResponseByAssetClassBetweenSlotsCC Nothing slot cs mbTokenName
+        spentResponses   <- getKupoResponseByAssetClassBetweenSlotsCS slot slot cs mbTokenName
+        let distribution = (\KupoResponse{..} -> (krAddress, assetAmount krValue)) <$> unspentResponses <> spentResponses
+            distribution' = fmap (\xs -> (fst $ head xs, sum $ map snd xs)) $ L.group $ L.sortBy (compare `on` fst) distribution
+        pure $  Map.fromList distribution'
+    where
+        assetAmount (Value val) = do
+            let csMap = fromMaybe PAM.empty $ PAM.lookup cs val
+            case mbTokenName of
+                Nothing -> sum $ PAM.elems csMap
+                Just tokenName -> fromMaybe 0 $ PAM.lookup tokenName csMap
 
 --------------------------------------------------- Kupo API ---------------------------------------------------
 
