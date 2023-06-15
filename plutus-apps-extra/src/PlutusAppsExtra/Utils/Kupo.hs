@@ -61,7 +61,7 @@ anyAddress = (Left KupoWildCard, Left KupoWildCard)
 
 type KupoAsset = (CurrencySymbol, Either KupoWildCard TokenName)
 
-data Pattern = AddrPattern KupoAddress | AssetPattern KupoAsset
+data Pattern = AddrPattern KupoAddress | AssetPattern KupoAsset | WildCardPattern
 
 data KupoDecoratedTxOut
     = KupoPublicKeyDecoratedTxOut
@@ -263,6 +263,7 @@ instance ToHttpApiData Pattern where
     toUrlPiece = \case
         AddrPattern addr   -> toUrlPiece addr
         AssetPattern asset -> toUrlPiece asset
+        WildCardPattern    -> "*"
 
 instance ToHttpApiData KupoAddress where
     toUrlPiece (cred, sCred) = T.pack $ showCred cred <> "/" <> showSCred sCred

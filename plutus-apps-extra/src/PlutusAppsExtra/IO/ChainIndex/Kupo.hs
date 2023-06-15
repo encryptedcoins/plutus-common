@@ -24,7 +24,7 @@ import           Network.HTTP.Client              (HttpExceptionContent, Request
 import           Plutus.V1.Ledger.Api             (StakingCredential(..), Credential (PubKeyCredential))
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
-import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoDecoratedTxOut (..), KupoUTXO, KupoUTXOs, KupoAddress, anyAddress, 
+import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoDecoratedTxOut (..), KupoUTXO, KupoUTXOs, KupoAddress, anyAddress,
                                                    mkAddressWithAnyCred, mkKupoAddress, Pattern (..), KupoResponse, KupoWildCard (..))
 import qualified PlutusAppsExtra.Utils.Kupo       as Kupo
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
@@ -88,7 +88,7 @@ getKupoResponseByStakeKeyBetweenSlots createdAfter createdBefore pkh = getFromEn
     (AddrPattern $ mkAddressWithAnyCred $ StakingHash $ PubKeyCredential pkh)
 
 getKupoResponseByAssetClassBetweenSlotsCC :: Maybe Slot -> Maybe Slot -> CurrencySymbol -> Maybe TokenName -> IO [KupoResponse]
-getKupoResponseByAssetClassBetweenSlotsCC createdAfter createdBefore cs tokenName 
+getKupoResponseByAssetClassBetweenSlotsCC createdAfter createdBefore cs tokenName
     = getFromEndpointKupo $ getKupoResponseBetweenSlotsCC
         (Kupo <$> createdAfter)
         (Kupo <$> createdBefore)
@@ -96,12 +96,20 @@ getKupoResponseByAssetClassBetweenSlotsCC createdAfter createdBefore cs tokenNam
         (AssetPattern (cs, maybeToEither KupoWildCard tokenName))
 
 getKupoResponseByAssetClassBetweenSlotsCS :: Maybe Slot -> Maybe Slot -> CurrencySymbol -> Maybe TokenName -> IO [KupoResponse]
-getKupoResponseByAssetClassBetweenSlotsCS createdBefore spentAfter cs tokenName 
+getKupoResponseByAssetClassBetweenSlotsCS createdBefore spentAfter cs tokenName
     = getFromEndpointKupo $ getKupoResponseBetweenSlotsCS
         (Kupo <$> createdBefore)
         (Kupo <$> spentAfter)
         True
         (AssetPattern (cs, maybeToEither KupoWildCard tokenName))
+
+getKupoResponseBetweenSlots :: Maybe Slot -> Maybe Slot -> IO [KupoResponse]
+getKupoResponseBetweenSlots createdAfter createdBefore 
+    = getFromEndpointKupo $ getKupoResponseBetweenSlotsCC
+        (Kupo <$> createdAfter)
+        (Kupo <$> createdBefore)
+        False
+        WildCardPattern
 
 --------------------------------------------------- Kupo API ---------------------------------------------------
 
