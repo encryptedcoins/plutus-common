@@ -14,8 +14,6 @@ import           Control.FromSum                  (eitherToMaybe, maybeToEither)
 import           Control.Monad                    (join, (<=<))
 import           Data.Coerce                      (coerce)
 import           Data.Data                        (Proxy (..))
-import           Data.Function                    (on)
-import qualified Data.List                        as L
 import qualified Data.Map                         as Map
 import           Data.Maybe                       (catMaybes, listToMaybe, fromMaybe)
 import           Ledger                           (Address (..), Datum (..), DatumHash (..), DecoratedTxOut (..), Script,
@@ -27,7 +25,7 @@ import           Plutus.V1.Ledger.Api             (StakingCredential(..), Creden
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoDecoratedTxOut (..), KupoUTXO, KupoUTXOs, KupoAddress, anyAddress,
-                                                   mkAddressWithAnyCred, mkKupoAddress, Pattern (..), KupoResponse (..), KupoWildCard (..))
+                                                   mkAddressWithAnyCred, mkKupoAddress, Pattern (..), KupoResponse (..), KupoWildCard (..), SlotWithHeaderHash (..))
 import qualified PlutusAppsExtra.Utils.Kupo       as Kupo
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
 import qualified PlutusTx.AssocMap                as PAM
@@ -113,19 +111,35 @@ getKupoResponseBetweenSlots createdAfter createdBefore
         False
         WildCardPattern
 
-getAssetDistributionBeforeSlot :: CurrencySymbol -> Maybe TokenName -> Maybe Slot -> IO (Map.Map Address Integer)
-getAssetDistributionBeforeSlot cs mbTokenName slot = do
-        unspentResponses <- getKupoResponseByAssetClassBetweenSlotsCC Nothing slot cs mbTokenName
-        spentResponses   <- getKupoResponseByAssetClassBetweenSlotsCS slot slot cs mbTokenName
-        let distribution = (\KupoResponse{..} -> (krAddress, assetAmount krValue)) <$> unspentResponses <> spentResponses
-            distribution' = fmap (\xs -> (fst $ head xs, sum $ map snd xs)) $ L.group $ L.sortBy (compare `on` fst) distribution
-        pure $  Map.fromList distribution'
+type GetUnspentKupoResponseWithAssetBetweenSlots =
+    "matches" :> Capture "pattern" Pattern 
+              :> QueryParam "created_after"  (Kupo Slot)
+              :> QueryParam "created_before" (Kupo Slot)
+              :> QueryFlag "unspent"
+              :> QueryParam "policy_id" (Kupo CurrencySymbol)
+              :> QueryParam "asset_name" (Kupo TokenName)
+              :>  Get '[JSON] [KupoResponse]
+
+type GetSpentKupoResponseWithAssetBetweenSlots =
+    "matches" :> Capture "pattern" Pattern 
+              :> QueryParam "spent_after"  (Kupo Slot)
+              :> QueryParam "created_before" (Kupo Slot)
+              :> QueryFlag "spent"
+              :> QueryParam "policy_id" (Kupo CurrencySymbol)
+              :> QueryParam "asset_name" (Kupo TokenName)
+              :>  Get '[JSON] [KupoResponse]
+
+getTokenBalanceToSlotByPkh :: CurrencySymbol -> TokenName -> Slot -> PubKeyHash -> IO Integer
+getTokenBalanceToSlotByPkh cs tokenName s pkh = do
+    unspent <- getFromEndpointKupo $ getUnspent addresPat Nothing (Just $ Kupo s) True (Just $ Kupo cs) (Just $ Kupo tokenName)
+    spent <- getFromEndpointKupo $ getSpent addresPat (Just $ Kupo s) Nothing True (Just $ Kupo cs) (Just $ Kupo tokenName)
+    pure $ sum $ map getAmount $ krValue <$> (filter filterSpent spent <> unspent)
     where
-        assetAmount (Value val) = do
-            let csMap = fromMaybe PAM.empty $ PAM.lookup cs val
-            case mbTokenName of
-                Nothing -> sum $ PAM.elems csMap
-                Just tokenName -> fromMaybe 0 $ PAM.lookup tokenName csMap
+        addresPat = AddrPattern $ mkAddressWithAnyCred $ StakingHash $ PubKeyCredential pkh
+        getUnspent = client (Proxy @GetUnspentKupoResponseWithAssetBetweenSlots)
+        getSpent = client (Proxy @GetSpentKupoResponseWithAssetBetweenSlots)
+        filterSpent KupoResponse{..} = swhhSlot krCreatedAt <= s && ((swhhSlot <$> krSpentAt) > Just s)
+        getAmount (Value val) = fromMaybe 0 $ PAM.lookup cs val >>= PAM.lookup tokenName
 
 --------------------------------------------------- Kupo API ---------------------------------------------------
 
@@ -180,7 +194,6 @@ type GetValidatorByHash =
     "scripts" :> Capture "validator hash" (Kupo ValidatorHash) :> Get '[JSON] (Maybe (Kupo (Versioned Validator)))
 type GetDatumByHash     =
     "datums"  :> Capture "datum hash" (Kupo DatumHash) :> Get '[JSON] (Kupo Datum)
-
 getKupoUtxosAt              :: KupoAddress        -> ClientM KupoUTXOs
 getKupoTxOutFromRef             :: Bool -> Kupo TxOutRef      -> ClientM [KupoDecoratedTxOut]
 getAllKupoUtxosBetweenSlots :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> ClientM KupoUTXOs
