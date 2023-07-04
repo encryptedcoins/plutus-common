@@ -13,9 +13,13 @@ import           Data.Either                                       (isRight)
 import           Plutus.V2.Ledger.Api                              (CostModelApplyError (CMInternalReadError), Data,
                                                                     EvaluationContext, EvaluationError, ExBudget, LogOutput,
                                                                     MintingPolicy (..), ProtocolVersion (ProtocolVersion), Script,
-                                                                    ScriptContext, Validator (..), VerboseMode (..),
-                                                                    evaluateScriptCounting, mkEvaluationContext, toData, ToData)
+                                                                    ScriptContext, ToData, TxId (..), TxInfo (..), Validator (..),
+                                                                    VerboseMode (..), always, evaluateScriptCounting,
+                                                                    mkEvaluationContext, toData)
 import           PlutusCore.Evaluation.Machine.ExBudgetingDefaults (defaultCostModelParams)
+import           PlutusTx.AssocMap                                 (empty)
+import           PlutusTx.Builtins                                 (emptyByteString)
+import           PlutusTx.Numeric                                  (AdditiveMonoid (..))
 import           Test.Hspec                                        (Expectation, expectationFailure, shouldSatisfy)
 
 testScipt :: Params -> Script -> [Data] -> Expectation
@@ -53,3 +57,19 @@ runScriptVerbose = runScript Verbose
 
 protocolVersionFromParams :: Params -> ProtocolVersion
 protocolVersionFromParams = uncurry ProtocolVersion . bimap fromIntegral fromIntegral . protocolParamProtocolVersion . pProtocolParams
+
+emptyInfo :: TxInfo
+emptyInfo = TxInfo {
+    txInfoInputs = [],
+    txInfoReferenceInputs = [],
+    txInfoOutputs = [],
+    txInfoFee = zero,
+    txInfoMint = zero,
+    txInfoDCert = [],
+    txInfoWdrl = empty,
+    txInfoValidRange = always,
+    txInfoSignatories = [],
+    txInfoRedeemers = empty,
+    txInfoData = empty,
+    txInfoId = TxId emptyByteString
+}
