@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -17,10 +18,11 @@ import           Data.Either.Extra            (eitherToMaybe)
 import           Data.Text                    (Text)
 
 import           Control.Applicative          ((<|>))
+import           Control.Arrow                ((>>>))
 import           Ledger                       (PubKeyHash (..), StakingCredential, toPlutusAddress)
 import           Ledger.Address               (Address (..), StakePubKeyHash (..), stakingCredential, toPubKeyHash)
 import           Ledger.Tx.CardanoAPI         (deserialiseFromRawBytes, toCardanoAddressInEra)
-import           Plutus.V1.Ledger.Api         (fromBuiltin)
+import           Plutus.V1.Ledger.Api         (Credential (..), StakingCredential (..), fromBuiltin)
 
 ---------------------------- Address to keyhashes conversions ----------------------------------
 
@@ -28,6 +30,11 @@ addressToKeyHashes :: Address -> Maybe (PubKeyHash, Maybe StakingCredential)
 addressToKeyHashes addr = do
     pkh  <- toPubKeyHash addr
     pure (pkh, stakingCredential addr)
+
+getStakeKey :: Address -> Maybe PubKeyHash
+getStakeKey = stakingCredential >>> \case
+    Just (StakingHash (PubKeyCredential pkh)) -> Just pkh
+    _ -> Nothing
 
 ----------------------------------- Bech32 conversions -----------------------------------------
 

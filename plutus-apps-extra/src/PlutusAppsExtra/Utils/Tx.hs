@@ -35,15 +35,20 @@ import           Control.Monad.Catch                    (MonadThrow (throwM))
 import           Data.Aeson                             (ToJSON (..))
 import           Data.Aeson.Extras                      (encodeByteString, tryDecode)
 import           Data.Functor                           ((<&>))
+import qualified Data.Map                               as Map
 import           Data.Maybe.Strict                      (maybeToStrictMaybe)
 import qualified Data.Set                               as Set
 import           Data.Text                              (Text)
-import           Ledger                                 (PubKey (..), Signature (..), Tx (..), cardanoTxMap, signatures)
+import           Ledger                                 (PaymentPubKeyHash (..), PubKey (..), PubKeyHash (..), Signature (..),
+                                                         Tx (..), TxId, TxOut (getTxOut), cardanoTxMap,
+                                                         getCardanoTxProducedOutputs, signatures)
 import           Ledger.Constraints                     (UnbalancedTx)
 import           Ledger.Tx                              (CardanoTx (..), SomeCardanoApiTx (..))
+import           Ledger.Tx.CardanoAPI                   (getRequiredSigners)
 import           Ouroboros.Consensus.Shelley.Eras       (StandardAlonzo, StandardBabbage, StandardShelley)
 import           Plutus.V1.Ledger.Bytes                 (bytes, fromBytes)
-import           Plutus.V2.Ledger.Api                   (fromBuiltin, toBuiltin)
+import           Plutus.V2.Ledger.Api                   (BuiltinByteString, fromBuiltin, toBuiltin)
+import           PlutusAppsExtra.IO.ChainIndex.Plutus   (getTxFromId)
 import           PlutusAppsExtra.Types.Error            (MkTxError (..))
 import           Text.Hex                               (decodeHex)
 
@@ -141,3 +146,13 @@ addCardanoTxSignature pubKey sig = cardanoTxMap addSignatureTx addSignatureCarda
             . Crypto.rawDeserialiseSigDSIGN
             . fromBuiltin
             $ getSignature sig
+
+------------------------------------- Other -------------------------------------
+
+getTxDatums :: CardanoTx -> [C.TxOutDatum C.CtxTx C.BabbageEra]
+getTxDatums = map ((\(C.TxOut _ _ c _) -> c) . getTxOut) . Map.elems . getCardanoTxProducedOutputs
+
+txIsSignedByKey :: TxId -> BuiltinByteString -> IO Bool
+txIsSignedByKey txId pkh = getTxFromId txId <&> \case
+    Just (SomeTx tx BabbageEraInCardanoMode) -> PaymentPubKeyHash (PubKeyHash pkh) `elem` getRequiredSigners tx
+    _ -> False

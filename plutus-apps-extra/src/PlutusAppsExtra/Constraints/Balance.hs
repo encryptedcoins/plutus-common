@@ -34,7 +34,7 @@ balanceExternalTx params walletUTXO changeAddress lookups cons = do
     utx <- throwEither MakeUnbalancedTxError $ mkTxWithParams params lookups cons
 
     cardanoBuildTx <- case utx of
-            UnbalancedEmulatorTx etx _ _ -> throwEither MakeBuildTxFromEmulatorTxError $
+            UnbalancedEmulatorTx etx _ _ -> either (throwM . MakeBuildTxFromEmulatorTxError) pure $
                 toCardanoTxBodyContent (pNetworkId params) (emulatorPParams params) [] etx
             UnbalancedCardanoTx cbt _    -> pure cbt
 

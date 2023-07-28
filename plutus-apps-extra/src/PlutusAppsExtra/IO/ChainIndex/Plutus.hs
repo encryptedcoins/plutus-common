@@ -18,18 +18,20 @@ import           Data.Map                         (Map)
 import qualified Data.Map                         as Map
 import           Data.Maybe                       (catMaybes)
 import           GHC.Generics                     (Generic)
-import           Ledger                           (Address, DecoratedTxOut (..), POSIXTime, TxOutRef (..))
+import           Ledger                           (Address, DecoratedTxOut (..), POSIXTime, TxOutRef (..), SomeCardanoApiTx, AssetClass)
 import           Network.HTTP.Client              (HttpExceptionContent, Request)
 import           Plutus.ChainIndex                (ChainIndexTx, Page (..), PageQuery)
-import           Plutus.ChainIndex.Api            (UtxoAtAddressRequest (..), UtxosResponse (..))
+import           Plutus.ChainIndex.Api            (UtxoAtAddressRequest (..), UtxosResponse (..), UtxoWithCurrencyRequest (..))
 import qualified Plutus.ChainIndex.Client         as Client
+import           Plutus.ChainIndex.Types          (ChainIndexTx(_citxCardanoTx))
 import           Plutus.V1.Ledger.Address         (Address (addressCredential))
+import           Plutus.V2.Ledger.Tx              (TxId)
 import           PlutusAppsExtra.IO.Time          (currentTime)
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, handle404, pattern ConnectionErrorOnPort)
 import           PlutusTx.Prelude                 hiding (fmap, mapM, mconcat, pure, traverse, (<$>), (<>))
-import           Prelude                          (IO, Show (..), fmap, traverse, (<$>), (<>))
+import           Prelude                          (IO, Show (..), fmap, traverse, (<$>), (<>), mapM)
 
 ----------------------------------- Chain index cache -----------------------------------
 
@@ -117,3 +119,19 @@ getUnspentTxOutFromRef = handle404 (pure Nothing) . fmap Just . getFromEndpointC
 utxoRefsAt :: PageQuery TxOutRef -> Address -> IO UtxosResponse
 utxoRefsAt pageQ =
     getFromEndpointChainIndex . Client.getUtxoSetAtAddress . UtxoAtAddressRequest (Just pageQ) . addressCredential
+
+getChainIndexTxFromId :: TxId -> IO (Maybe ChainIndexTx)
+getChainIndexTxFromId = handle404 (pure Nothing) . fmap Just . getFromEndpointChainIndex . Client.getTx
+
+getTxFromId :: TxId -> IO (Maybe SomeCardanoApiTx)
+getTxFromId = fmap (>>= _citxCardanoTx) . getChainIndexTxFromId
+
+getUtxosWithCurrency :: AssetClass -> IO MapUTXO
+getUtxosWithCurrency asset = go [] (Just def) 
+    >>= fmap (Map.fromList . catMaybes) . mapM (\ref -> fmap sequence $ (ref,) <$> getUnspentTxOutFromRef ref)
+    where
+        go acc Nothing = pure acc
+        go acc (Just pq) = do
+            page' <- page <$> getFromEndpointChainIndex (Client.getUtxoSetWithCurrency $ UtxoWithCurrencyRequest (Just pq) asset)
+            let newAcc = acc <> pageItems page'
+            go newAcc (nextPageQuery page')

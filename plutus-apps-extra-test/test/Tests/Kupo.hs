@@ -39,14 +39,14 @@ unspentTxOutFromRef ref = do
 getUtxosWithTokensBetweenSlots :: IO ()
 getUtxosWithTokensBetweenSlots = do
     let name = TokenName "ENCS"
-    res <- Kupo.getUtxosWithTokensBetweenSlots name 15_000_000_000_000 11981184 11981184
+    res <- Kupo.getUtxosWithTokenAmountBetweenSlots name 15_000_000_000_000 11981184 11981184
     print res
 
 -- ScriptDecoratedTxOut wuthout datum
 failedParsing :: IO ()
 failedParsing = do
     let name = TokenName "ENCS"
-    res <- Kupo.getUtxosWithTokensBetweenSlots name 15_000_000_000_000 11979189 11979189
+    res <- Kupo.getUtxosWithTokenAmountBetweenSlots name 15_000_000_000_000 11979189 11979189
     mapM_ (\x -> print x >> putStrLn "\n\n\n\n") res
 
 veryLongTest :: IO ()

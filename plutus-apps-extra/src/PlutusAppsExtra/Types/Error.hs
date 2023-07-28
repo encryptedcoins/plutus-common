@@ -54,7 +54,7 @@ data MkTxError
 
 data BalanceExternalTxError 
     = MakeUnbalancedTxError
-    | MakeBuildTxFromEmulatorTxError
+    | MakeBuildTxFromEmulatorTxError ToCardanoError
     | NonBabbageEraChangeAddress
     | MakeUtxoProviderError BalancingError
     | MakeAutoBalancedTxError CardanoLedgerError
