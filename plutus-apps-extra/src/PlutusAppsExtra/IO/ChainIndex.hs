@@ -22,7 +22,6 @@ data ChainIndex = Plutus | Kupo
 class MonadIO m => HasChainIndex m where
     getChainIndex :: m ChainIndex
 
--- TODO: change this to corresponding txOutRefs requests
 getRefsAt :: HasChainIndex m => Address -> m [TxOutRef]
 getRefsAt addr = Map.keys <$> getUtxosAt addr
 
