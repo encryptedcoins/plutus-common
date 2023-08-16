@@ -34,7 +34,7 @@ import qualified Data.Text                        as T
 import           Data.Time                        (getCurrentTime)
 import           GHC.Base                         (coerce)
 import           GHC.TypeLits                     (AppendSymbol, KnownSymbol)
-import           Ledger                           (Address (..), CurrencySymbol, Datum, DatumFromQuery (DatumUnknown), DatumHash,
+import           Ledger                           (Address (..), CurrencySymbol, Datum, DatumFromQuery (..), DatumHash,
                                                    DecoratedTxOut (..), Script, ScriptHash, Slot (getSlot), TokenName, TxId,
                                                    TxOutRef (..), Validator, ValidatorHash, Versioned, stakingCredential)
 import           Network.HTTP.Client              (HttpExceptionContent, Request)
