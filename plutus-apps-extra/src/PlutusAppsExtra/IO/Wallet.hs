@@ -87,7 +87,7 @@ data RestoredWallet = RestoredWallet
 
 instance FromJSON RestoredWallet where
     parseJSON = withObject "Restore wallet" $ \v -> do
-        let mkMnemonic = either (fail . show) pure . mkSomeMnemonic @'[ 24 ]
+        let mkMnemonic = either (fail . show) pure . mkSomeMnemonic @'[ 9, 12, 15, 18, 21, 24 ]
             mkPassphrase = Passphrase . fromString
         name                   <- v .: "name"
         mnemonicSentence       <- v .: "mnemonic_sentence" >>= mkMnemonic
