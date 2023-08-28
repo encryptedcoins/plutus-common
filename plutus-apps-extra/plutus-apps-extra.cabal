@@ -53,6 +53,7 @@ library
       PlutusAppsExtra.Utils.Orphans
       PlutusAppsExtra.Utils.Scripts
       PlutusAppsExtra.Utils.Servant
+      PlutusAppsExtra.Utils.Time
       PlutusAppsExtra.Utils.Tx
       PlutusAppsExtra.Utils.Value
     build-depends:
