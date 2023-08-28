@@ -1,14 +1,18 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module PlutusAppsExtra.Utils.Time where
 
 import           Cardano.Node.Emulator (SlotConfig, posixTimeToEnclosingSlot, posixTimeToUTCTime, slotToEndPOSIXTime,
                                         utcTimeToPOSIXTime)
 import           Control.Applicative   (Alternative)
+import           Control.Lens          ((^?))
+import qualified Data.Aeson            as J
+import           Data.Aeson.Lens       (key)
 import           Data.Aeson.Types      (FromJSON (..), Parser, Value)
 import           Data.Foldable         (asum)
 import qualified Data.Text             as T
 import           Data.Time             (UTCTime, defaultTimeLocale, parseTimeM)
 import           Ledger                (Slot)
-import qualified Data.Aeson as J
 
 parseSlotOrUtc :: Value -> Parser (Either UTCTime Slot)
 parseSlotOrUtc val = case val of
@@ -16,6 +20,10 @@ parseSlotOrUtc val = case val of
     J.Number _   -> Right . fromInteger <$> parseJSON val
     J.Object _   -> Right <$> parseJSON val
     _            -> fail "parseSlotOrUtc"
+
+-- Parse slot config or get slot config from plutus config
+parseSlotConfig :: Value -> Parser SlotConfig
+parseSlotConfig val = maybe (parseJSON val) parseJSON $ val ^? key "cicSlotConfig"
 
 parseTime :: (Alternative m, MonadFail m) => String -> m UTCTime
 parseTime s = asum $ (\format -> parseTimeM True defaultTimeLocale format s)
