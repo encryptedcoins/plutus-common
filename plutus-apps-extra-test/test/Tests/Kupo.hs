@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE NumericUnderscores #-}
 
 module Tests.Kupo where
 
@@ -35,25 +34,12 @@ unspentTxOutFromRef ref = do
     print res'
     putStrLn "\nSame res:\n"
     print $ res == res'
-    
-getUtxosWithTokensBetweenSlots :: IO ()
-getUtxosWithTokensBetweenSlots = do
-    let name = TokenName "ENCS"
-    res <- Kupo.getUtxosWithTokenAmountBetweenSlots name 15_000_000_000_000 11981184 11981184
-    print res
-
--- ScriptDecoratedTxOut wuthout datum
-failedParsing :: IO ()
-failedParsing = do
-    let name = TokenName "ENCS"
-    res <- Kupo.getUtxosWithTokenAmountBetweenSlots name 15_000_000_000_000 11979189 11979189
-    mapM_ (\x -> print x >> putStrLn "\n\n\n\n") res
 
 veryLongTest :: IO ()
-veryLongTest = getUtxosAt "addr_test1wqr4uz0tp75fu8wrg6gm83t20aphuc9vt6n8kvu09ctkugq6ch8kj"
+veryLongTest = getUtxosAt "addr_test1zzkw4m6kacd3a5hepzphx0a5ky8j8436cdsc0mhyu7mahjfu9sytuyrjjxlg6udmkvk6z8emjasmpxgl9fhkjs857wgquw9tta"
 
 getScriptByHash :: IO ()
-getScriptByHash = Kupo.getSciptByHash "a258f896dff1d01ac9a8bd0598304b933a8f3e9e0953938767178099" >>= print
+getScriptByHash = Kupo.getScriptByHash "a258f896dff1d01ac9a8bd0598304b933a8f3e9e0953938767178099" >>= print
 
 addrContract :: Text
 addrContract = "addr_test1wpadr7r28cnwfvgmjrn2784j2netmjd0net7t4dkwqt0wzscyypnc"

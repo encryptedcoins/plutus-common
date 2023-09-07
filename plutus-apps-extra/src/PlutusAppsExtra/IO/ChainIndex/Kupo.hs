@@ -1,253 +1,243 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE PatternSynonyms   #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TupleSections     #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE ConstraintKinds      #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE NumericUnderscores   #-}
+{-# LANGUAGE PatternSynonyms      #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE RecordWildCards      #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TupleSections        #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns         #-}
 
 module PlutusAppsExtra.IO.ChainIndex.Kupo where
 
-import           Control.Exception                (SomeException, try)
-import           Control.FromSum                  (eitherToMaybe, maybeToEither)
-import           Control.Monad                    (join, (<=<))
-import           Data.Coerce                      (coerce)
+import           Cardano.Api                      (NetworkId, writeFileJSON)
+import           Control.Applicative              (Applicative (..))
+import           Control.Concurrent               (threadDelay)
+import           Control.Exception                (AsyncException (UserInterrupt), Exception (..), SomeException)
+import           Control.FromSum                  (eitherToMaybe)
+import           Control.Monad                    (forM, join, (>=>))
+import           Control.Monad.Catch              (MonadCatch, MonadThrow (throwM), handle, try)
+import           Control.Monad.IO.Class           (MonadIO (liftIO))
+import           Data.Aeson                       (FromJSON (parseJSON), ToJSON, eitherDecodeFileStrict)
+import           Data.Aeson.Types                 (parseMaybe)
 import           Data.Data                        (Proxy (..))
+import           Data.Default                     (Default (def))
 import qualified Data.Map                         as Map
-import           Data.Maybe                       (catMaybes, listToMaybe, fromMaybe)
-import           Ledger                           (Address (..), Datum (..), DatumHash (..), DecoratedTxOut (..), Script,
-                                                   ScriptHash (..), Slot, TokenName, TxOutRef (..), Validator (..),
-                                                   ValidatorHash (..), Versioned (..), AssetClass, PubKeyHash, CurrencySymbol)
-import           Ledger.Value                     (Value (..), assetClassValueOf)
+import           Data.Maybe                       (catMaybes, fromMaybe, listToMaybe, mapMaybe)
+import           Data.Text                        (Text)
+import qualified Data.Text                        as T
+import           Data.Time                        (getCurrentTime)
+import           GHC.Base                         (coerce)
+import           GHC.TypeLits                     (AppendSymbol, KnownSymbol)
+import           Ledger                           (Address (..), CurrencySymbol, Datum, DatumFromQuery (..), DatumHash,
+                                                   DecoratedTxOut (..), Script, ScriptHash, Slot (getSlot), TokenName, TxId,
+                                                   TxOutRef (..), Validator, ValidatorHash, Versioned, stakingCredential)
 import           Network.HTTP.Client              (HttpExceptionContent, Request)
-import           Plutus.V1.Ledger.Api             (StakingCredential(..), Credential (PubKeyCredential))
+import           Plutus.V2.Ledger.Api             (Credential (..), Value (..))
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
-import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoDecoratedTxOut (..), KupoUTXO, KupoUTXOs, KupoAddress, anyAddress,
-                                                   mkAddressWithAnyCred, mkKupoAddress, Pattern (..), KupoResponse (..), KupoWildCard (..), SlotWithHeaderHash (..))
-import qualified PlutusAppsExtra.Utils.Kupo       as Kupo
+import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoOrder, KupoResponse (..), MkPattern (..), Pattern (..),
+                                                   fromKupoDatumType, kupoResponseToJSON)
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
 import qualified PlutusTx.AssocMap                as PAM
-import           Servant.API                      (Capture, Get, JSON, QueryFlag, QueryParam, (:<|>) ((:<|>)), (:>))
-import           Servant.Client                   (ClientM, client)
+import           Servant.API                      (Capture, Get, JSON, QueryFlag, QueryParam, (:>))
+import           Servant.Client                   (client)
 
--- Get all utxos at a given address
+----------------------------------------------------------- Hi-level API -----------------------------------------------------------
+
+-- Get all unspent utxos at a given address
 getUtxosAt :: Address -> IO MapUTXO
-getUtxosAt = fromKupoUtxos <=< (getFromEndpointKupo . getKupoUtxosAt . mkKupoAddress)
+getUtxosAt addr = getResponse >>= responseToUtxoMap
+    where
+        getResponse = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated
+            def {reqPattern = mkPattern addr, reqSpentOrUnspent = True}
 
 getUnspentTxOutFromRef :: TxOutRef -> IO (Maybe DecoratedTxOut)
-getUnspentTxOutFromRef = sequence . listToMaybe . fmap fromKupoDecoratedTxOut <=<
-    (getFromEndpointKupo . getKupoTxOutFromRef True . Kupo)
+getUnspentTxOutFromRef = (getResponse . mkPattern) >=> fmap (join . listToMaybe) . mapM kupoResponseToDecoratedTxOut
+    where
+        getResponse pat = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated
+            def {reqPattern = pat, reqSpentOrUnspent = True}
 
 getTxOutFromRef :: TxOutRef -> IO (Maybe DecoratedTxOut)
-getTxOutFromRef = sequence . listToMaybe . fmap fromKupoDecoratedTxOut <=<
-    (getFromEndpointKupo . getKupoTxOutFromRef False . Kupo)
+getTxOutFromRef ref = getResponse >>= fmap (join . listToMaybe) . mapM kupoResponseToDecoratedTxOut
+    where
+        getResponse = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated
+            def {reqPattern = mkPattern ref}
 
-getSciptByHash :: ScriptHash -> IO (Maybe (Versioned Script))
-getSciptByHash = fmap coerce . getFromEndpointKupo . getKupoScriptByHash . Kupo
+-- Don't use this function to get total token distribution - response will be to large to handle.
+getTokenBalanceToSlot :: MkPattern addrPatt => CurrencySymbol -> TokenName -> Maybe Slot -> addrPatt -> IO Integer
+getTokenBalanceToSlot cs tokenName slotTo addrPat = sum . fmap getAmount <$> liftA2 (<>) getSpent getUnspent
+    where
+        getAmount KupoResponse{..} = fromMaybe 0 $ PAM.lookup cs (getValue krValue) >>= PAM.lookup tokenName
+        getUnspent = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated req
+        getSpent   = getKupoResponse @'SUSpent   @'CSCreated @'CSSpent   req{reqCreatedOrSpentAfter = slotTo}
+        req = def
+            { reqPattern = mkPattern addrPat
+            , reqSpentOrUnspent = True
+            , reqCreatedOrSpentBefore = slotTo
+            , reqCurrencySymbol = Just cs
+            , reqTokenName = Just tokenName
+            }
+
+----------------------------------------------------------- Get Matches (*) -----------------------------------------------------------
+
+type GetKupoResponse spentOrUnspent createdOrSpentBefore createdOrSpentAfter
+    =             "matches"
+    :> Capture    "pattern"            Pattern
+    :> QueryFlag  spentOrUnspent
+    :> QueryParam "order"              KupoOrder
+    :> QueryParam createdOrSpentBefore (Kupo Slot)
+    :> QueryParam createdOrSpentAfter  (Kupo Slot)
+    :> QueryParam "policy_id"          (Kupo CurrencySymbol)
+    :> QueryParam "asset_name"         (Kupo TokenName)
+    :> QueryParam "transaction_id"     (Kupo TxId)
+    :> QueryParam "output_index"       Integer
+    :> Get '[JSON] [KupoResponse]
+
+data SpentOrUnspent = SUSpent | SUUnspent
+type family SpentOrUnspentSymbol su where
+    SpentOrUnspentSymbol 'SUSpent   = "spent"
+    SpentOrUnspentSymbol 'SUUnspent = "unspent"
+
+data CreatedOrSpent = CSCreated | CSSpent
+type family CreatedOrSpentSymbol cs where
+    CreatedOrSpentSymbol 'CSCreated = "created"
+    CreatedOrSpentSymbol 'CSSpent   = "spent"
+
+data KupoRequest (su :: SpentOrUnspent) (before :: CreatedOrSpent) (after :: CreatedOrSpent)
+    = KupoRequest
+    { reqPattern              :: Pattern
+    , reqSpentOrUnspent       :: Bool
+    , reqOrder                :: Maybe KupoOrder
+    , reqCreatedOrSpentBefore :: Maybe Slot
+    , reqCreatedOrSpentAfter  :: Maybe Slot
+    , reqCurrencySymbol       :: Maybe CurrencySymbol
+    , reqTokenName            :: Maybe TokenName
+    , reqTxId                 :: Maybe TxId
+    , reqTxIdx                :: Maybe Integer
+    } deriving (Show, Eq)
+
+instance Default (KupoRequest su before after) where
+    def = KupoRequest WildCardPattern False Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+
+type IsValidRequest su before after =
+    ( KnownSymbol (SpentOrUnspentSymbol su)
+    , KnownSymbol (AppendSymbol (CreatedOrSpentSymbol before) "_before")
+    , KnownSymbol (AppendSymbol (CreatedOrSpentSymbol after) "_after")
+    )
+
+getKupoResponse :: forall su before after. IsValidRequest su before after => KupoRequest su before after -> IO [KupoResponse]
+getKupoResponse KupoRequest{..} = getFromEndpointKupo $ client p
+        reqPattern
+        reqSpentOrUnspent
+        reqOrder
+        (Kupo <$> reqCreatedOrSpentBefore)
+        (Kupo <$> reqCreatedOrSpentAfter)
+        (Kupo <$> reqCurrencySymbol)
+        (Kupo <$> reqTokenName)
+        (Kupo <$> reqTxId)
+        reqTxIdx
+    where
+        p = Proxy @(GetKupoResponse
+            (SpentOrUnspentSymbol su)
+            (AppendSymbol (CreatedOrSpentSymbol before) "_before")
+            (AppendSymbol (CreatedOrSpentSymbol after)  "_after"))
+
+------------------------------------------------------------- Get By hash -------------------------------------------------------------
+
+type GetScriptByHash
+    = "scripts" :> Capture "script hash" (Kupo ScriptHash) :> Get '[JSON] (Maybe (Kupo (Versioned Script)))
+
+getScriptByHash :: ScriptHash -> IO (Maybe (Versioned Script))
+getScriptByHash = fmap coerce . getFromEndpointKupo . client (Proxy @GetScriptByHash) . Kupo
+
+type GetValidatorByHash
+    = "scripts" :> Capture "validator hash" (Kupo ValidatorHash) :> Get '[JSON] (Maybe (Kupo (Versioned Validator)))
 
 getValidatorByHash :: ValidatorHash -> IO (Maybe (Versioned Validator))
-getValidatorByHash = fmap coerce . getFromEndpointKupo . getKupoValidatorByHash . Kupo
+getValidatorByHash = fmap coerce . getFromEndpointKupo . client (Proxy @GetValidatorByHash) . Kupo
 
-getDatumByHash :: DatumHash -> IO Datum
-getDatumByHash = fmap coerce . getFromEndpointKupo . getKupoDatumByHash . Kupo
+type GetDatumByHash
+    = "datums"  :> Capture "datum hash" (Kupo DatumHash) :> Get '[JSON] (Kupo Datum)
 
-getDatumByHashSafe :: DatumHash -> IO (Maybe Datum)
-getDatumByHashSafe = fmap eitherToMaybe . try @SomeException . getDatumByHash
+getDatumByHash :: DatumHash -> IO (Maybe Datum)
+getDatumByHash = fmap eitherToMaybe . try @IO @SomeException . fmap coerce . getFromEndpointKupo . client (Proxy @GetDatumByHash) . Kupo
 
--- Get all specified utxos and filter them
-getKupoUtxosWith :: IO KupoUTXOs -> ((TxOutRef, KupoDecoratedTxOut) -> Bool) -> IO MapUTXO
-getKupoUtxosWith getUtxos f = getUtxos >>= fromKupoUtxos . coerce . filter f . coerce
+------------------------------------------------------------ Partialy getting ------------------------------------------------------------
 
--- Get all utxos between specified slots, that contain certain numbers of tokens with specified name.
-getUtxosWithTokenAmountBetweenSlots :: TokenName -> Integer -> Slot -> Slot -> IO MapUTXO
-getUtxosWithTokenAmountBetweenSlots name amt sFrom sTo = getKupoUtxosWith getKupoUtxos f
+-- Partially get large kupo responses, with intermediate saving of the result.
+partiallyGet :: forall su b a m. (MonadIO m, MonadCatch m, IsValidRequest su b a)
+    => NetworkId -> (Text -> m ()) -> Slot -> Slot -> Slot -> KupoRequest su b a -> FilePath -> m [KupoResponse]
+partiallyGet newtworkId ((. T.pack) -> mkLog) slotFrom slotTo slotDelta req fp = do
+    let intervals = divideTimeIntoIntervals slotFrom slotTo slotDelta
+    resValue <- fmap concat $ forM (zip [1 :: Int ..] intervals) $ \(i, (f, t)) -> reloadHandler $ do
+        mkLog $ show i <> "/" <> show (length intervals)
+        let fileName = fp <> show (getSlot f) <> "_"  <> show (getSlot t) <> ".json"
+            getResponse = liftIO $ fmap (kupoResponseToJSON newtworkId) <$> do
+                let req' = req{reqCreatedOrSpentAfter = Just f, reqCreatedOrSpentBefore = Just t} :: KupoRequest su b a
+                getKupoResponse req'
+        withResultSaving fileName getResponse
+    pure $ catMaybes $ parseMaybe parseJSON <$> resValue
     where
-        f = elem (PAM.singleton name amt) . PAM.elems . getValue . Kupo._decoratedTxOutValue . snd
-        getKupoUtxos = getFromEndpointKupo $ getAllKupoUtxosBetweenSlots (Just (Kupo sFrom)) (Just (Kupo sTo)) False
+        reloadHandler ma = (`handle` ma) $ \e -> case fromException e of
+            Just UserInterrupt -> throwM UserInterrupt
+            _ -> do
+                ct <- liftIO getCurrentTime
+                mkLog ( show ct <> "\n" <> show e <> "\n(Handled)")
+                liftIO (threadDelay 5_000_000)
+                reloadHandler ma
 
--- Get all unspent utxos between specified slots, that contain specified assetClass
-getUnspentUtxosWithAssetBetweenSlots :: AssetClass -> Maybe Slot -> Maybe Slot -> IO MapUTXO
-getUnspentUtxosWithAssetBetweenSlots asset createdAfter createdBefore = getKupoUtxosWith getUnspentKupoUtxos f
+divideTimeIntoIntervals :: Slot -> Slot -> Slot -> [(Slot, Slot)]
+divideTimeIntoIntervals from to delta = do
+    let xs = [from, from + delta .. to]
+    zip (init xs) (subtract 1 <$> tail xs) <> [(last xs, to)]
+
+withResultSaving :: (MonadIO m, FromJSON a, ToJSON a) => FilePath -> m a -> m a
+withResultSaving fp action = liftIO (try @_ @SomeException $ either error id <$> eitherDecodeFileStrict fp) >>= either doAction pure
     where
-        f (_, out) = assetClassValueOf (Kupo._decoratedTxOutValue out) asset > 0
-        getUnspentKupoUtxos = getFromEndpointKupo $ getAllKupoUtxosBetweenSlots (Kupo <$> createdAfter) (Kupo <$> createdBefore) True
+        doAction _ = do
+            res <- action
+            _ <- liftIO $ writeFileJSON fp res
+            pure res
 
-getSpentUtxosWithAssetBetweenSlots :: AssetClass -> Maybe Slot -> Maybe Slot -> IO MapUTXO
-getSpentUtxosWithAssetBetweenSlots asset createdBefore spentAfter = getKupoUtxosWith getUnspentKupoUtxos f
-    where
-        f (_, out) = assetClassValueOf (Kupo._decoratedTxOutValue out) asset > 0
-        getUnspentKupoUtxos = getFromEndpointKupo $ getAllKupoUtxosBetweenSlots (Kupo <$> createdBefore) (Kupo <$> spentAfter) True
+-------------------------------------------------------- Kupo response conversion --------------------------------------------------------
 
-getKupoResponseByStakeKeyBetweenSlots :: Maybe Slot -> Maybe Slot -> PubKeyHash -> IO [KupoResponse]
-getKupoResponseByStakeKeyBetweenSlots createdAfter createdBefore pkh = getFromEndpointKupo $ getKupoResponseBetweenSlotsCC
-    (Kupo <$> createdAfter)
-    (Kupo <$> createdBefore)
-    False
-    (AddrPattern $ mkAddressWithAnyCred $ StakingHash $ PubKeyCredential pkh)
+responseToUtxoMap :: [KupoResponse] -> IO MapUTXO
+responseToUtxoMap responses = Map.fromList . mapMaybe sequence <$> mapM (\r -> (kupoResponseToTxOutRef r,) <$> kupoResponseToDecoratedTxOut r) responses
 
-getKupoResponseByAssetClassBetweenSlotsCC :: Maybe Slot -> Maybe Slot -> CurrencySymbol -> Maybe TokenName -> IO [KupoResponse]
-getKupoResponseByAssetClassBetweenSlotsCC createdAfter createdBefore cs tokenName
-    = getFromEndpointKupo $ getKupoResponseBetweenSlotsCC
-        (Kupo <$> createdAfter)
-        (Kupo <$> createdBefore)
-        True
-        (AssetPattern (cs, maybeToEither KupoWildCard tokenName))
+kupoResponseToDecoratedTxOut :: KupoResponse -> IO (Maybe DecoratedTxOut)
+kupoResponseToDecoratedTxOut KupoResponse{..} = do
 
-getKupoResponseByAssetClassBetweenSlotsCS :: Maybe Slot -> Maybe Slot -> CurrencySymbol -> Maybe TokenName -> IO [KupoResponse]
-getKupoResponseByAssetClassBetweenSlotsCS createdBefore spentAfter cs tokenName
-    = getFromEndpointKupo $ getKupoResponseBetweenSlotsCS
-        (Kupo <$> createdBefore)
-        (Kupo <$> spentAfter)
-        True
-        (AssetPattern (cs, maybeToEither KupoWildCard tokenName))
+    mbDat <- fmap join $ sequence $ getDatumByHash <$> krDatumHash
+    _decoratedTxOutReferenceScript <- fmap join $ sequence $ getScriptByHash <$> krScriptHash
+    let _decoratedTxOutValue = krValue
+    case addressCredential krAddress of
 
-getKupoResponseBetweenSlots :: Maybe Slot -> Maybe Slot -> IO [KupoResponse]
-getKupoResponseBetweenSlots createdAfter createdBefore 
-    = getFromEndpointKupo $ getKupoResponseBetweenSlotsCC
-        (Kupo <$> createdAfter)
-        (Kupo <$> createdBefore)
-        False
-        WildCardPattern
+        PubKeyCredential _decoratedTxOutPubKeyHash -> do
+            let _decoratedTxOutStakingCredential = addressStakingCredential krAddress
+                _decoratedTxOutPubKeyDatum = liftA2 (,) krDatumHash (liftA2 ($) (fromKupoDatumType <$> krDatumType) mbDat)
+            pure $ Just PublicKeyDecoratedTxOut{..}
 
-type GetUnspentKupoResponseWithAssetBetweenSlots =
-    "matches" :> Capture "pattern" Pattern 
-              :> QueryParam "created_after"  (Kupo Slot)
-              :> QueryParam "created_before" (Kupo Slot)
-              :> QueryFlag "unspent"
-              :> QueryParam "policy_id" (Kupo CurrencySymbol)
-              :> QueryParam "asset_name" (Kupo TokenName)
-              :>  Get '[JSON] [KupoResponse]
+        ScriptCredential _decoratedTxOutValidatorHash -> do
+            let _decoratedTxOutStakingCredential = stakingCredential krAddress
+                dfq = fromMaybe DatumUnknown $ liftA2 ($) (fromKupoDatumType <$> krDatumType) mbDat
+            _decoratedTxOutValidator <- getValidatorByHash _decoratedTxOutValidatorHash
+            case krDatumHash of
+                Nothing -> pure Nothing
+                Just dh -> pure $ Just ScriptDecoratedTxOut{_decoratedTxOutScriptDatum = (dh, dfq), ..}
 
-type GetSpentKupoResponseWithAssetBetweenSlots =
-    "matches" :> Capture "pattern" Pattern 
-              :> QueryParam "spent_after"  (Kupo Slot)
-              :> QueryParam "created_before" (Kupo Slot)
-              :> QueryFlag "spent"
-              :> QueryParam "policy_id" (Kupo CurrencySymbol)
-              :> QueryParam "asset_name" (Kupo TokenName)
-              :>  Get '[JSON] [KupoResponse]
+kupoResponseToTxOutRef :: KupoResponse -> TxOutRef
+kupoResponseToTxOutRef KupoResponse{..} = TxOutRef krTxId krOutputIndex
 
-getTokenBalanceToSlotByPkh :: CurrencySymbol -> TokenName -> Slot -> PubKeyHash -> IO Integer
-getTokenBalanceToSlotByPkh cs tokenName s pkh = do
-    unspent <- getFromEndpointKupo $ getUnspent addresPat Nothing (Just $ Kupo s) True (Just $ Kupo cs) (Just $ Kupo tokenName)
-    spent <- getFromEndpointKupo $ getSpent addresPat (Just $ Kupo s) Nothing True (Just $ Kupo cs) (Just $ Kupo tokenName)
-    pure $ sum $ map getAmount $ krValue <$> (filter filterSpent spent <> unspent)
-    where
-        addresPat = AddrPattern $ mkAddressWithAnyCred $ StakingHash $ PubKeyCredential pkh
-        getUnspent = client (Proxy @GetUnspentKupoResponseWithAssetBetweenSlots)
-        getSpent = client (Proxy @GetSpentKupoResponseWithAssetBetweenSlots)
-        filterSpent KupoResponse{..} = swhhSlot krCreatedAt <= s && ((swhhSlot <$> krSpentAt) > Just s)
-        getAmount (Value val) = fromMaybe 0 $ PAM.lookup cs val >>= PAM.lookup tokenName
-
---------------------------------------------------- Kupo API ---------------------------------------------------
-
-type KupoAPI
-    =    GetUtxosAt
-    :<|> UnspetTxOutFromRef
-    :<|> GetUtxosBetweenSlots
-    :<|> GetSpentUtxosBetweenSlots
-    :<|> GetKupoResponseBetweenSlots
-    :<|> GetSpentKupoResponseBetweenSlots
-    :<|> GetScriptByHash
-    :<|> GetValidatorByHash
-    :<|> GetDatumByHash
+------------------------------------------------------------- Kupo port -------------------------------------------------------------
 
 getFromEndpointKupo :: Endpoint a
 getFromEndpointKupo = getFromEndpointOnPort 1442
 
 pattern KupoConnectionError :: Request -> HttpExceptionContent -> ConnectionError
-pattern KupoConnectionError req content <- ConnectionErrorOnPort _ req content
-
-type GetUtxosAt         =
-    "matches" :> Capture "pattern" KupoAddress :> QueryFlag "unspent" :> Get '[JSON] [Maybe KupoUTXO]
-type UnspetTxOutFromRef =
-    "matches" :> Capture "pattern" (Kupo TxOutRef) :> QueryFlag "unspent" :> Get '[JSON] [Maybe KupoDecoratedTxOut]
-type GetUtxosBetweenSlots =
-    "matches" :> Capture "pattern" Pattern
-              :> QueryParam "created_after"  (Kupo Slot)
-              :> QueryParam "created_before" (Kupo Slot)
-              :> QueryFlag "unspent"
-              :> Get '[JSON] [Maybe KupoUTXO]
-type GetSpentUtxosBetweenSlots =
-    "matches" :> Capture "pattern" Pattern
-              :> QueryParam "created_before"  (Kupo Slot)
-              :> QueryParam "spent_after" (Kupo Slot)
-              :> QueryFlag "spent"
-              :> Get '[JSON] [Maybe KupoUTXO]
-type GetKupoResponseBetweenSlots =
-    "matches" :> Capture "pattern" Pattern
-              :> QueryParam "created_after"  (Kupo Slot)
-              :> QueryParam "created_before" (Kupo Slot)
-              :> QueryFlag "unspent"
-              :> Get '[JSON] [KupoResponse]
-type GetSpentKupoResponseBetweenSlots =
-    "matches" :> Capture "pattern" Pattern
-              :> QueryParam "created_before" (Kupo Slot)
-              :> QueryParam "spent_after"    (Kupo Slot)
-              :> QueryFlag "spent"
-              :> Get '[JSON] [KupoResponse]
-type GetScriptByHash    =
-    "scripts" :> Capture "script hash" (Kupo ScriptHash) :> Get '[JSON] (Maybe (Kupo (Versioned Script)))
-type GetValidatorByHash =
-    "scripts" :> Capture "validator hash" (Kupo ValidatorHash) :> Get '[JSON] (Maybe (Kupo (Versioned Validator)))
-type GetDatumByHash     =
-    "datums"  :> Capture "datum hash" (Kupo DatumHash) :> Get '[JSON] (Kupo Datum)
-getKupoUtxosAt              :: KupoAddress        -> ClientM KupoUTXOs
-getKupoTxOutFromRef             :: Bool -> Kupo TxOutRef      -> ClientM [KupoDecoratedTxOut]
-getAllKupoUtxosBetweenSlots :: Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> ClientM KupoUTXOs
-getSpentKupoUtxosBetweenSlots ::  Maybe (Kupo Slot)  -> Maybe (Kupo Slot) -> Bool -> ClientM KupoUTXOs
-getKupoResponseBetweenSlotsCC :: Maybe (Kupo Slot) -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
-getKupoResponseBetweenSlotsCS :: Maybe (Kupo Slot) -> Maybe (Kupo Slot) -> Bool -> Pattern -> ClientM [KupoResponse]
-getKupoScriptByHash         :: Kupo ScriptHash    -> ClientM (Maybe (Kupo (Versioned Script)))
-getKupoValidatorByHash      :: Kupo ValidatorHash -> ClientM (Maybe (Kupo (Versioned Validator)))
-getKupoDatumByHash          :: Kupo DatumHash     -> ClientM (Kupo Datum)
-(getKupoUtxosAt
-    , getKupoTxOutFromRef
-    , getAllKupoUtxosBetweenSlots
-    , getSpentKupoUtxosBetweenSlots
-    , getKupoResponseBetweenSlotsCC
-    , getKupoResponseBetweenSlotsCS
-    , getKupoScriptByHash
-    , getKupoValidatorByHash
-    , getKupoDatumByHash
-    )
-    = (fmap catMaybes <$> (`getKupoUtxosAt_` True)
-      ,\isUnspent -> fmap catMaybes <$> (`getKupoUnspentTxOutFromRef_` isUnspent)
-      ,\f t isUnspent-> catMaybes <$> getKupoUtxosBetweenSlots_ (AddrPattern anyAddress) f t isUnspent
-      ,\f t isSpent-> catMaybes <$> getKupoSpentUtxosBetweenSlots_ (AddrPattern anyAddress) f t isSpent
-      ,\f t isUnspent pat -> getKupoResponseBetweenSlotsCC_ pat f t isUnspent
-      ,\f t isSpent pat -> getKupoResponseBetweenSlotsCS_ pat f t isSpent
-      ,getKupoScriptByHash_
-      ,getKupoValidatorByHash_
-      ,getKupoDatumByHash_
-      )
-    where
-        getKupoUtxosAt_
-            :<|> getKupoUnspentTxOutFromRef_
-            :<|> getKupoUtxosBetweenSlots_
-            :<|> getKupoSpentUtxosBetweenSlots_
-            :<|> getKupoResponseBetweenSlotsCC_
-            :<|> getKupoResponseBetweenSlotsCS_
-            :<|> getKupoScriptByHash_
-            :<|> getKupoValidatorByHash_
-            :<|> getKupoDatumByHash_ = client (Proxy @KupoAPI)
-
-fromKupoUtxos :: KupoUTXOs -> IO MapUTXO
-fromKupoUtxos = fmap Map.fromList . mapM (mapM fromKupoDecoratedTxOut . coerce)
-
-fromKupoDecoratedTxOut :: KupoDecoratedTxOut -> IO DecoratedTxOut
-fromKupoDecoratedTxOut = \case
-    KupoPublicKeyDecoratedTxOut{..} -> do
-        _decoratedTxOutPubKeyDatum     <- maybe (pure Nothing) (fmap Just . getDatum) _decoratedTxOutPubKeyDatumHash
-        _decoratedTxOutReferenceScript <- getScript _decoratedTxOutReferenceScriptHash
-        pure PublicKeyDecoratedTxOut{..}
-    KupoScriptDecoratedTxOut{..} -> do
-        _decoratedTxOutScriptDatum     <- getDatum  _decoratedTxOutScriptDatum
-        _decoratedTxOutReferenceScript <- getScript _decoratedTxOutReferenceScriptHash
-        _decoratedTxOutValidator       <- getValidatorByHash _decoratedTxOutValidatorHash
-        pure ScriptDecoratedTxOut{..}
-    where
-        getScript = fmap join . mapM getSciptByHash
-        getDatum (dh, dtype) = (dh,) . dtype <$> getDatumByHash dh
+pattern KupoConnectionError req content <- ConnectionErrorOnPort 1442 req content

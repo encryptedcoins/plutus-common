@@ -1,14 +1,22 @@
 {-# LANGUAGE NoImplicitPrelude   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module PlutusAppsExtra.Utils.Datum where
 
+import qualified Cardano.Ledger.Alonzo.Data       as Alonzo
+import           Cardano.Ledger.Alonzo.TxInfo     (transDataHash)
+import           Cardano.Ledger.BaseTypes         (StrictMaybe (SJust))
+import           Cardano.Ledger.Crypto            (StandardCrypto)
 import           Ledger                           (DatumFromQuery (..), DatumHash, datumHash)
 import           Ledger.Constraints.TxConstraints (TxOutDatum (..))
+import           Ouroboros.Consensus.Shelley.Eras (ShelleyEra)
 import           Plutus.ChainIndex                (OutputDatum (..))
 import           Plutus.V1.Ledger.Scripts         (Datum (..))
+import           Plutus.V2.Ledger.Api             (builtinDataToData)
 import           PlutusTx.IsData.Class            (ToData (toBuiltinData))
 import           PlutusTx.Prelude                 (Bool (False), Eq ((==)), ($), (.))
+import qualified Prelude
 
 toDatumHash :: ToData datum => datum -> TxOutDatum Datum
 toDatumHash = TxOutDatumHash . Datum . toBuiltinData
@@ -32,3 +40,6 @@ inlinedUnitInTxOut = (unitHash, DatumInline (Datum $ toBuiltinData ()))
 
 unitHash :: DatumHash
 unitHash = datumHash $ Datum $ toBuiltinData ()
+
+hashDatum :: Datum -> Prelude.Maybe DatumHash
+hashDatum = transDataHash . SJust . Alonzo.hashData @(ShelleyEra StandardCrypto) . Alonzo.Data . builtinDataToData . getDatum

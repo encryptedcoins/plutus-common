@@ -1,137 +1,161 @@
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DerivingVia                #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE OverloadedLists            #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingVia        #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE OverloadedLists    #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE RecordWildCards    #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeApplications   #-}
 
 module PlutusAppsExtra.Utils.Kupo where
 
-import           Cardano.Api                   (TxIx (..), NetworkId (Mainnet))
-import           Cardano.Chain.Block           ( HeaderHash )
+import           Cardano.Chain.Block           (HeaderHash)
 import           Codec.Serialise               (deserialise)
-import           Data.Aeson                    (FromJSON (..), withObject, (.:), ToJSON, KeyValue ((.=)))
+import           Data.Aeson                    (FromJSON (..), KeyValue ((.=)), ToJSON, withObject, (.:), (.:?))
 import qualified Data.Aeson                    as J
-import qualified Data.Aeson.Key 
+import qualified Data.Aeson.Key
 import qualified Data.Aeson.Key                as J
 import qualified Data.Aeson.KeyMap             as J
-import           Data.Bifunctor                (Bifunctor(..))
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.Coerce                   (coerce)
-import           Data.Fixed                    (Fixed(..))
+import           Data.Fixed                    (Fixed (..))
 import           Data.Functor                  ((<&>))
 import qualified Data.Text                     as T
 import           GHC.Generics                  (Generic)
-import           Ledger                        (Address (..), Datum (..), DatumFromQuery (..), DatumHash (..), Language (..),
-                                                PubKeyHash, Script, ScriptHash (..), TxId (..), TxOutRef (..), Validator (..),
-                                                ValidatorHash (..), Value, Versioned (..), Slot (Slot), CurrencySymbol, TokenName, noAdaValue)
+import           Ledger                        (Address (..), AssetClass, CurrencySymbol, Datum (..), DatumFromQuery (..),
+                                                DatumHash (..), Language (..), NetworkId, Script, ScriptHash (..), Slot (Slot),
+                                                TokenName, TxId (..), TxOutRef (..), Validator (..), ValidatorHash (..), Value,
+                                                Versioned (..), noAdaValue)
 import qualified Ledger.Ada                    as Ada
+import           Ledger.Value                  (AssetClass (..), TokenName (..), flattenValue)
 import qualified Ledger.Value                  as Value
-import           Plutus.V1.Ledger.Api          (Credential (..), StakingCredential (..), fromBuiltin, toBuiltin, CurrencySymbol (..))
-import           PlutusAppsExtra.Utils.Address (bech32ToAddress, addressToBech32)
+import           Plutus.V1.Ledger.Api          (Credential (..), CurrencySymbol (..), StakingCredential (..), fromBuiltin,
+                                                toBuiltin)
+import           PlutusAppsExtra.Utils.Address (addressToBech32, bech32ToAddress)
 import qualified PlutusTx.AssocMap             as PMap
 import           PlutusTx.Builtins             (BuiltinByteString)
 import           Servant.API                   (ToHttpApiData (..))
 import           Text.Hex                      (decodeHex, encodeHex)
-import           Ledger.Value                  (flattenValue, TokenName (..))
-------------------------------------------- Newtype to avoid orphans -------------------------------------------
+
+------------------------------------- Newtype to avoid orphans and instance clashes -------------------------------------
 
 newtype Kupo a = Kupo a
 
-type KupoUTXO  = Kupo (TxOutRef, KupoDecoratedTxOut)
-type KupoUTXOs = [KupoUTXO]
+----------------------------------------------------- Kupo patterns -----------------------------------------------------
 
-type KupoAddress = (Either KupoWildCard Credential, Either KupoWildCard StakingCredential)
+class MkPattern a where
+    mkPattern :: a -> Pattern
 
-mkKupoAddress :: Address -> KupoAddress
-mkKupoAddress Address{..} = (Right addressCredential, maybe (Left KupoWildCard) Right addressStakingCredential)
+data Pattern
+    = AddrPattern KupoAddress
+    | AssetPattern KupoAsset
+    | TxOutRefPattern KupoTxOutRef
+    | WildCardPattern
+    deriving (Show, Eq)
 
-mkAddressWithAnyCred :: StakingCredential -> KupoAddress
-mkAddressWithAnyCred = (Left KupoWildCard ,) . Right
+instance MkPattern Pattern where
+    mkPattern = id
 
-addressWithAnySCred :: Credential -> KupoAddress
-addressWithAnySCred cred = first (const $ Right cred) anyAddress
+data KupoAddress = KupoAddress (Maybe Credential) (Maybe StakingCredential)
+    deriving (Show, Eq)
 
-anyAddress :: KupoAddress
-anyAddress = (Left KupoWildCard, Left KupoWildCard)
+instance MkPattern Address where
+    mkPattern Address{..} = AddrPattern $ KupoAddress (Just addressCredential) addressStakingCredential
 
-type KupoAsset = (CurrencySymbol, Either KupoWildCard TokenName)
+instance MkPattern Credential where
+    mkPattern cred = AddrPattern $ KupoAddress (Just cred) Nothing
 
-data Pattern = AddrPattern KupoAddress | AssetPattern KupoAsset | WildCardPattern
+instance MkPattern StakingCredential where
+    mkPattern sCred = AddrPattern $ KupoAddress Nothing (Just sCred)
 
-data KupoDecoratedTxOut
-    = KupoPublicKeyDecoratedTxOut
-        { _decoratedTxOutPubKeyHash          :: PubKeyHash
-        , _decoratedTxOutStakingCredential   :: Maybe StakingCredential
-        , _decoratedTxOutValue               :: Value
-        , _decoratedTxOutPubKeyDatumHash     :: Maybe (DatumHash, Datum -> DatumFromQuery)
-        , _decoratedTxOutReferenceScriptHash :: Maybe ScriptHash
-        }
-    | KupoScriptDecoratedTxOut
-        { _decoratedTxOutValidatorHash       :: ValidatorHash
-        , _decoratedTxOutStakingCredential   :: Maybe StakingCredential
-        , _decoratedTxOutValue               :: Value
-        , _decoratedTxOutScriptDatum         :: (DatumHash, Datum -> DatumFromQuery)
-        , _decoratedTxOutReferenceScriptHash :: Maybe ScriptHash
-        }
+anyAddress :: Pattern
+anyAddress = AddrPattern $ KupoAddress Nothing Nothing
+
+data KupoAsset = KupoAsset CurrencySymbol (Maybe TokenName)
+    deriving (Show, Eq)
+
+instance MkPattern CurrencySymbol where
+    mkPattern cs = AssetPattern $ KupoAsset cs Nothing
+
+instance MkPattern AssetClass where
+    mkPattern = AssetPattern . uncurry KupoAsset . fmap Just . unAssetClass
+
+data KupoTxOutRef = KupoTxOutRef TxId (Maybe Integer)
+    deriving (Show, Eq)
+
+instance MkPattern TxId where
+    mkPattern = TxOutRefPattern . (`KupoTxOutRef` Nothing)
+
+instance MkPattern TxOutRef where
+    mkPattern TxOutRef{..} = TxOutRefPattern $ KupoTxOutRef txOutRefId $ Just txOutRefIdx
 
 ----------------------------------------------- FromJSON instances -----------------------------------------------
 
 data KupoResponse = KupoResponse
-    { krTransactionId :: TxId
-    , krOutputIndex :: TxIx
+    { krTxId :: TxId
+    , krOutputIndex :: Integer
     , krAddress :: Address
     , krValue :: Value
     , krDatumHash :: Maybe DatumHash
-    -- , krDatumType :: DatumFromQuery
+    , krDatumType :: Maybe KupoDatumType
     , krScriptHash :: Maybe ScriptHash
     , krCreatedAt :: SlotWithHeaderHash
     , krSpentAt :: Maybe SlotWithHeaderHash
-    } deriving (Show, Generic)
+    } deriving (Show, Eq, Generic)
+
+data KupoDatumType = KupoDatumHash | KupoDatumInline
+    deriving (Show , Eq)
+
+fromKupoDatumType :: KupoDatumType -> (Datum -> DatumFromQuery)
+fromKupoDatumType = \case
+    KupoDatumHash   -> DatumInBody
+    KupoDatumInline -> DatumInline
 
 data SlotWithHeaderHash = SlotWithHeaderHash
     { swhhSlot :: Slot
     , swhhHeaderHash :: HeaderHash
-    } deriving (Show, Generic)
+    } deriving (Show, Eq, Generic)
 
 instance FromJSON KupoResponse where
     parseJSON = withObject "KupoResponse" $ \o -> do
-        krTransactionId  <- o .: "transaction_id" <&> TxId
-        krOutputIndex <- o .: "output_index"
-        krAddress <-  o .: "address" >>= maybe (fail "bech32ToAddress") pure . bech32ToAddress
-        Kupo krValue <- o .: "value"
-        krDatumHash <- o .: "datum_hash" >>= \case
+        krTxId          <- o .: "transaction_id" <&> TxId
+        krOutputIndex   <- o .: "output_index"
+        krAddress       <- o .: "address" >>= maybe (fail "bech32ToAddress") pure . bech32ToAddress
+        Kupo krValue    <- o .: "value"
+        krCreatedAt     <- o .: "created_at"
+        krSpentAt       <- o .: "spent_at"
+        krDatumHash     <- o .: "datum_hash" >>= \case
             J.Null -> pure Nothing
             J.String dHash -> Just . DatumHash <$> toBbs dHash
             val -> fail $ show val
+        krDatumType <- o .:? "datum_type" >>= \case
+            Just (J.String "hash"  ) -> pure $ Just KupoDatumHash
+            Just (J.String "inline") -> pure $ Just KupoDatumInline
+            Nothing                  -> pure   Nothing
+            Just val                 -> fail $ show val
         krScriptHash <- o .: "script_hash" >>= \case
             J.Null -> pure Nothing
             J.String sHash -> Just . ScriptHash <$> toBbs sHash
             val -> fail $ show val
-        krCreatedAt <- o .: "created_at"
-        krSpentAt <- o .: "spent_at"
         pure KupoResponse{..}
         where toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex
 
-instance ToJSON KupoResponse where
-    toJSON KupoResponse{..} = J.object
-        ["transaction_id" .= getTxId krTransactionId
-        , "output_index" .= krOutputIndex
-        , "address" .= addressToBech32 Mainnet krAddress
-        , "value" .= J.Object
-            [ "coins" .= (\(MkFixed i) -> i) (Ada.getAda (Ada.fromValue krValue))
-            , "assets" .= J.fromList (map (\(cs, tn, amt) -> 
-                (Data.Aeson.Key.fromText $ encodeHex $ fromBuiltin $ unCurrencySymbol cs <> unTokenName tn, amt)) $ flattenValue (noAdaValue krValue))
-            ]
-        , "datum_hash" .= krDatumHash
-        , "script_hash" .= krScriptHash
-        , "created_at" .= krCreatedAt
-        , "spent_at" .= krSpentAt
+kupoResponseToJSON :: NetworkId -> KupoResponse -> J.Value
+kupoResponseToJSON networkId KupoResponse{..} = J.object
+    ["transaction_id" .= getTxId krTxId
+    , "output_index"  .= krOutputIndex
+    , "address"       .= addressToBech32 networkId krAddress
+    , "datum_hash"    .= krDatumHash
+    , "script_hash"   .= krScriptHash
+    , "created_at"    .= krCreatedAt
+    , "spent_at"      .= krSpentAt
+    , "value"         .= J.Object
+        [ "coins"     .= (\(MkFixed i) -> i) (Ada.getAda (Ada.fromValue krValue))
+        , "assets"    .= J.fromList (map (\(cs, tn, amt) ->
+            (Data.Aeson.Key.fromText $ encodeHex $ fromBuiltin $ unCurrencySymbol cs <> unTokenName tn, amt)) $ flattenValue (noAdaValue krValue))
         ]
+    ]
 
 instance FromJSON SlotWithHeaderHash where
     parseJSON = withObject "KupoResponse" $ \o -> do
@@ -144,73 +168,6 @@ instance ToJSON SlotWithHeaderHash where
         ["slot_no" .= toInteger swhhSlot
         , "header_hash" .= swhhHeaderHash
         ]
-
-instance {-# OVERLAPPING #-} FromJSON (Maybe KupoUTXO) where
-    parseJSON j = ($ j) $ withObject "Kupo UTXO" $ \o -> do
-        refId  <- o .: "transaction_id" <&> TxId
-        refIdX <- o .: "output_index"
-        parseJSON j >>= \case
-            Just txOut -> pure $ Just $ Kupo (TxOutRef refId refIdX, txOut)
-            _          -> pure Nothing
-
--- instance FromJSON KupoUTXO where
---     parseJSON j = ($ j) $ withObject "Kupo UTXO" $ \o -> do
---         refId  <- o .: "transaction_id" <&> TxId
---         refIdX <- o .: "output_index"
---         txOut <- parseJSON j
---         pure $ Kupo (TxOutRef refId refIdX, txOut)
-
-instance {-# OVERLAPPING #-} FromJSON (Maybe KupoDecoratedTxOut) where
-    parseJSON = withObject "KupoDecoratedTxOut" $ \o -> do
-        addr      <- (o .: "address") >>= maybe (fail "bech32ToAddress") pure . bech32ToAddress
-        Kupo val  <- o .: "value"
-        datumHash <- o .: "datum_hash" >>= \case
-            J.Null        -> pure Nothing
-            J.String hash -> Just . DatumHash <$> toBbs hash
-            _             -> fail "datum hash"
-        datum <- case datumHash of
-            Nothing -> pure Nothing
-            Just dh  -> o .: "datum_type" >>= \case
-                J.String "hash"   -> pure $ Just (dh, DatumInBody)
-                J.String "inline" -> pure $ Just (dh, DatumInline)
-                _                 -> fail "datum type"
-        let sc = addressStakingCredential addr
-        script    <- o .: "script_hash" >>= \case
-            J.Null      -> pure Nothing
-            J.String sh -> Just . ScriptHash <$> toBbs sh
-            _           -> fail "script hash"
-        case addressCredential addr of
-            PubKeyCredential pkh -> pure $ Just $ KupoPublicKeyDecoratedTxOut pkh sc val datum script
-            ScriptCredential vh -> case datum of
-                Just datum' -> pure $ Just $ KupoScriptDecoratedTxOut vh sc val datum' script
-                _           -> pure Nothing
-        where toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex
-
--- instance FromJSON KupoDecoratedTxOut where
---     parseJSON = withObject "KupoDecoratedTxOut" $ \o -> do
---         addr      <- (o .: "address") >>= maybe (fail "bech32ToAddress") pure . bech32ToAddress
---         Kupo val  <- o .: "value"
---         datumHash <- o .: "datum_hash" >>= \case
---             J.Null        -> pure Nothing
---             J.String hash -> Just . DatumHash <$> toBbs hash
---             _             -> fail "datum hash"
---         datum <- case datumHash of
---             Nothing -> pure Nothing
---             Just dh  -> o .: "datum_type" >>= \case
---                 J.String "hash"   -> pure $ Just (dh, DatumInBody)
---                 J.String "inline" -> pure $ Just (dh, DatumInline)
---                 _                 -> fail "datum type"
---         let sc = addressStakingCredential addr
---         script    <- o .: "script_hash" >>= \case
---             J.Null      -> pure Nothing
---             J.String sh -> Just . ScriptHash <$> toBbs sh
---             _           -> fail "script hash"
---         case addressCredential addr of
---             PubKeyCredential pkh -> pure $ KupoPublicKeyDecoratedTxOut pkh sc val datum script
---             ScriptCredential vh -> do
---                 datum' <- maybe (fail "script txOut without datum") pure datum
---                 pure $ KupoScriptDecoratedTxOut vh sc val datum' script
---         where toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex
 
 instance FromJSON (Kupo (Versioned Script)) where
     parseJSON = withObject "Kupo Versioned Script" $ \o -> do
@@ -255,32 +212,24 @@ instance FromJSON (Kupo Value) where
 
 -------------------------------------------- ToHttpApiData instances --------------------------------------------
 
-instance ToHttpApiData (Kupo TxOutRef) where
-    toUrlPiece (Kupo TxOutRef{..}) = T.pack (show txOutRefIdx <> "@") <>
-        encodeHex (fromBuiltin $ getTxId txOutRefId)
-
 instance ToHttpApiData Pattern where
     toUrlPiece = \case
-        AddrPattern addr   -> toUrlPiece addr
-        AssetPattern asset -> toUrlPiece asset
-        WildCardPattern    -> "*"
-
-instance ToHttpApiData KupoAddress where
-    toUrlPiece (cred, sCred) = T.pack $ showCred cred <> "/" <> showSCred sCred
+        AddrPattern (KupoAddress cred sCred) -> T.pack $ showCred cred <> "/" <> showSCred sCred
+        AssetPattern (KupoAsset cs name) -> toUrlPiece (Kupo cs) <> "." <> maybe "*" (toUrlPiece . Kupo) name
+        TxOutRefPattern (KupoTxOutRef txId txIdx) -> maybe "*" toUrlPiece txIdx <> "@" <> toUrlPiece (Kupo txId)
+        WildCardPattern -> "*"
         where
             showCred = \case
-                Right (PubKeyCredential c) -> show c
-                Right (ScriptCredential c) -> show c
-                Left _ -> "*"
+                Just (PubKeyCredential c) -> show c
+                Just (ScriptCredential c) -> show c
+                Nothing -> "*"
             showSCred = \case
-                Right (StakingHash sHash) -> showCred $ Right sHash
+                Just (StakingHash sHash) -> showCred $ Just sHash
                 _                         -> "*"
-
-instance ToHttpApiData KupoAsset where
-    toUrlPiece (cs, name) = toUrlPiece (Kupo cs) <> "." <> either toUrlPiece (toUrlPiece . Kupo) name
 
 deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo CurrencySymbol)
 deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo TokenName)
+deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo TxId)
 
 instance ToHttpApiData (Kupo ScriptHash) where
     toUrlPiece = encodeHex . fromBuiltin @BuiltinByteString . coerce
@@ -288,10 +237,13 @@ instance ToHttpApiData (Kupo ScriptHash) where
 deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo ValidatorHash)
 deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo DatumHash)
 
-data KupoWildCard = KupoWildCard
-
-instance ToHttpApiData KupoWildCard where
-    toUrlPiece _ = "*"
-
 instance ToHttpApiData (Kupo Slot) where
     toUrlPiece (Kupo (Slot i)) = T.pack $ show i
+
+data KupoOrder = KupoOrderAsc | KupoOrerDesc
+    deriving (Show, Eq)
+
+instance ToHttpApiData KupoOrder where
+    toUrlPiece = \case
+        KupoOrderAsc -> "oldest_first"
+        KupoOrerDesc -> "most_recent_first"
