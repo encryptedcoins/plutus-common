@@ -75,13 +75,15 @@ getTokenBalanceToSlot cs tokenName slotTo addrPat = sum . fmap getAmount <$> lif
     where
         getAmount KupoResponse{..} = fromMaybe 0 $ PAM.lookup cs (getValue krValue) >>= PAM.lookup tokenName
         getUnspent = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated req
-        getSpent   = getKupoResponse @'SUSpent   @'CSCreated @'CSSpent   req{reqCreatedOrSpentAfter = slotTo}
+        getSpent   = case slotTo of
+            Just s -> getKupoResponse @'SUSpent   @'CSCreated @'CSSpent   req{reqCreatedOrSpentAfter = Just s}
+            _      -> pure []
         req = def
-            { reqPattern = mkPattern addrPat
-            , reqSpentOrUnspent = True
+            { reqPattern              = mkPattern addrPat
+            , reqSpentOrUnspent       = True
             , reqCreatedOrSpentBefore = slotTo
-            , reqCurrencySymbol = Just cs
-            , reqTokenName = Just tokenName
+            , reqCurrencySymbol       = Just cs
+            , reqTokenName            = Just tokenName
             }
 
 ----------------------------------------------------------- Get Matches (*) -----------------------------------------------------------
