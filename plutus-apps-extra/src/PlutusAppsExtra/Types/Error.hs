@@ -12,7 +12,7 @@
 
 module PlutusAppsExtra.Types.Error where
 
-import           Cardano.Api                    (FromJSON, ToJSON, NetworkMagic, TxValidationErrorInMode, CardanoMode)
+import           Cardano.Api                    (CardanoMode, FromJSON, NetworkMagic, ToJSON, TxValidationErrorInMode)
 import           Cardano.Node.Emulator          (BalancingError, CardanoLedgerError)
 import           Cardano.Wallet.Api.Types       (ApiSerialisedTransaction)
 import           Cardano.Wallet.Primitive.Types (WalletId)
@@ -21,8 +21,9 @@ import           Control.Monad.Catch            (MonadThrow (..))
 import qualified Data.Aeson                     as J
 import           Data.Text                      (Text)
 import           GHC.Generics                   (Generic)
-import           Ledger                         (Address, CardanoTx, Value, DecoratedTxOut, ToCardanoError)
+import           Ledger                         (Address, CardanoTx, DecoratedTxOut, ToCardanoError)
 import           Network.HTTP.Client            (HttpExceptionContent, Request)
+import qualified Plutus.V2.Ledger.Api           as P
 import           Prelude
 
 data ConnectionError = ConnectionError Request HttpExceptionContent
@@ -42,10 +43,10 @@ data MkTxError
     = AllConstructorsFailed [TxBuilderError]
     | CantExtractHashFromCardanoTx CardanoTx
     | CantExtractKeyHashesFromAddress Address
-    | CantExtractTxOutRefsFromEmulatorTx
+    -- | CantExtractTxOutRefsFromEmulatorTx
     | ConvertApiSerialisedTxToCardanoTxError ApiSerialisedTransaction
-    | ConvertCardanoTxToSealedTxError CardanoTx
-    | NotEnoughFunds Value
+    -- | ConvertCardanoTxToSealedTxError CardanoTx
+    | NotEnoughFunds P.Value
     | UnbuildableTxOut DecoratedTxOut ToCardanoError
     | UnbuildableExportTx
     | UnbuildableUnbalancedTx
@@ -54,7 +55,6 @@ data MkTxError
 
 data BalanceExternalTxError 
     = MakeUnbalancedTxError
-    | MakeBuildTxFromEmulatorTxError ToCardanoError
     | NonBabbageEraChangeAddress
     | MakeUtxoProviderError BalancingError
     | MakeAutoBalancedTxError CardanoLedgerError
@@ -72,8 +72,7 @@ data BlockfrostError
     deriving (Show, Exception)
 
 data SubmitTxToLocalNodeError
-    = CantSubmitEmulatorTx CardanoTx
-    | FailedSumbit (TxValidationErrorInMode CardanoMode)
+    = FailedSumbit (TxValidationErrorInMode CardanoMode)
     | NoConnectionToLocalNode
     deriving (Show, Exception)
 

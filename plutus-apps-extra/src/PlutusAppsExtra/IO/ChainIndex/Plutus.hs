@@ -18,20 +18,21 @@ import           Data.Map                         (Map)
 import qualified Data.Map                         as Map
 import           Data.Maybe                       (catMaybes)
 import           GHC.Generics                     (Generic)
-import           Ledger                           (Address, DecoratedTxOut (..), POSIXTime, TxOutRef (..), SomeCardanoApiTx, AssetClass)
+import           Ledger                           (Address, CardanoTx, DecoratedTxOut (..), POSIXTime, TxOutRef (..))
 import           Network.HTTP.Client              (HttpExceptionContent, Request)
 import           Plutus.ChainIndex                (ChainIndexTx, Page (..), PageQuery)
-import           Plutus.ChainIndex.Api            (UtxoAtAddressRequest (..), UtxosResponse (..), UtxoWithCurrencyRequest (..))
+import           Plutus.ChainIndex.Api            (UtxoAtAddressRequest (..), UtxoWithCurrencyRequest (..), UtxosResponse (..))
 import qualified Plutus.ChainIndex.Client         as Client
-import           Plutus.ChainIndex.Types          (ChainIndexTx(_citxCardanoTx))
+import           Plutus.ChainIndex.Types          (ChainIndexTx (_citxCardanoTx))
 import           Plutus.V1.Ledger.Address         (Address (addressCredential))
+import           Plutus.V1.Ledger.Value           (AssetClass)
 import           Plutus.V2.Ledger.Tx              (TxId)
 import           PlutusAppsExtra.IO.Time          (currentTime)
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, handle404, pattern ConnectionErrorOnPort)
 import           PlutusTx.Prelude                 hiding (fmap, mapM, mconcat, pure, traverse, (<$>), (<>))
-import           Prelude                          (IO, Show (..), fmap, traverse, (<$>), (<>), mapM)
+import           Prelude                          (IO, Show (..), fmap, mapM, traverse, (<$>), (<>))
 
 ----------------------------------- Chain index cache -----------------------------------
 
@@ -123,7 +124,7 @@ utxoRefsAt pageQ =
 getChainIndexTxFromId :: TxId -> IO (Maybe ChainIndexTx)
 getChainIndexTxFromId = handle404 (pure Nothing) . fmap Just . getFromEndpointChainIndex . Client.getTx
 
-getTxFromId :: TxId -> IO (Maybe SomeCardanoApiTx)
+getTxFromId :: TxId -> IO (Maybe CardanoTx)
 getTxFromId = fmap (>>= _citxCardanoTx) . getChainIndexTxFromId
 
 getUtxosWithCurrency :: AssetClass -> IO MapUTXO

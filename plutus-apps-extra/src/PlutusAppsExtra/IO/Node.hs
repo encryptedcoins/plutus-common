@@ -10,7 +10,7 @@ import           Cardano.Api.Shelley                                 (CardanoMod
 import           Control.Concurrent.STM                              (atomically, newEmptyTMVarIO, putTMVar, takeTMVar)
 import           Control.Monad.Catch                                 (Exception (fromException), handle, throwM)
 import           GHC.IO.Exception                                    (IOErrorType (NoSuchThing), IOException (..))
-import           Ledger.Tx                                           (CardanoTx (..), SomeCardanoApiTx (..))
+import           Ledger.Tx                                           (CardanoTx (..))
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Client (SubmitResult (..))
 import qualified Ouroboros.Network.Protocol.LocalTxSubmission.Client as Net.Tx
 import           PlutusAppsExtra.Types.Error                         (SubmitTxToLocalNodeError (..))
@@ -20,7 +20,7 @@ sumbitTxToNodeLocal
     -> NetworkId
     -> CardanoTx
     -> IO (Net.Tx.SubmitResult (TxValidationErrorInMode CardanoMode))
-sumbitTxToNodeLocal socketPath networkId (CardanoApiTx (SomeTx txInEra eraInMode)) = handleConnectionAbscence $ do
+sumbitTxToNodeLocal socketPath networkId (CardanoTx tx eraInMode) = handleConnectionAbscence $ do
         resultVar <- newEmptyTMVarIO
         _ <- connectToLocalNode
             connctInfo
@@ -41,10 +41,9 @@ sumbitTxToNodeLocal socketPath networkId (CardanoApiTx (SomeTx txInEra eraInMode
             }
         localTxSubmissionClientSingle resultVar =
             Net.Tx.LocalTxSubmissionClient
-            $ pure $ Net.Tx.SendMsgSubmitTx (TxInMode txInEra eraInMode) $ \result -> do
+            $ pure $ Net.Tx.SendMsgSubmitTx (TxInMode tx eraInMode) $ \result -> do
                 atomically $ putTMVar resultVar result
                 pure (Net.Tx.SendMsgDone ())
-sumbitTxToNodeLocal _ _ etx = throwM $ CantSubmitEmulatorTx etx
 
 handleConnectionAbscence :: IO a -> IO a
 handleConnectionAbscence = handle $ \e -> case fromException e of

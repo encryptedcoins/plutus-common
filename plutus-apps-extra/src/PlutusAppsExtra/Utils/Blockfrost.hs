@@ -13,20 +13,20 @@ module PlutusAppsExtra.Utils.Blockfrost where
 import           Cardano.Api                   (SerialiseAddress (serialiseAddress), StakeAddress, TxId (..))
 import           Cardano.Api.Shelley           (PoolId)
 import           Control.Monad                 (mzero)
-import           Data.Aeson                    (FromJSON (..), withObject, withText, (.:), ToJSON)
+import           Data.Aeson                    (FromJSON (..), ToJSON, withObject, withText, (.:))
 import qualified Data.Aeson                    as J
 import           Data.Functor                  ((<&>))
 import qualified Data.Text                     as T
-import           Ledger                        (Address, AssetClass, Value)
-import           Ledger.Value                  (AssetClass (..), TokenName (..), Value (..), adaToken)
+import           Deriving.Aeson                (CamelToSnake, CustomJSON (CustomJSON), FieldLabelModifier, Generic, StripPrefix)
+import           Ledger                        (Address)
+import           Plutus.Script.Utils.Value     (AssetClass (..), TokenName (..), adaToken)
 import           Plutus.V1.Ledger.Api          (CurrencySymbol (..), adaSymbol, fromBuiltin, toBuiltin)
+import qualified Plutus.V2.Ledger.Api          as P
 import           PlutusAppsExtra.Utils.Address (bech32ToAddress)
 import qualified PlutusTx.AssocMap             as PAM
 import           Servant.API                   (ToHttpApiData (..))
 import qualified Text.Hex                      as T
 import           Text.Read                     (readMaybe)
-import           Deriving.Aeson                (CamelToSnake, CustomJSON (CustomJSON),
-                                                FieldLabelModifier, Generic, StripPrefix)
 
 data AccDelegationHistoryResponse = AccDelegationHistoryResponse
     { adhrActiveEpoch :: Int
@@ -84,7 +84,7 @@ instance FromJSON TxUtxoResponseInput where
 
 data TxUTxoResponseOutput = TxUTxoResponseOutput
     { turoAddress :: Address
-    , turoAmount  :: Value
+    , turoAmount  :: P.Value
     } deriving (Show, Eq)
 
 instance FromJSON TxUTxoResponseOutput where
@@ -129,15 +129,15 @@ deriving newtype instance Show a => Show (Bf a)
 
 data BfOrder = Asc | Desc
 
-instance FromJSON (Bf Value) where
+instance FromJSON (Bf P.Value) where
     parseJSON = withObject "Bf Value" $ \o -> (,) <$> o .: "unit" <*> o .: "quantity" >>= \case
-        (J.String "lovelace", amt) -> readAmt amt <&> (Bf . Value . PAM.singleton adaSymbol . PAM.singleton adaToken)
+        (J.String "lovelace", amt) -> readAmt amt <&> (Bf . P.Value . PAM.singleton adaSymbol . PAM.singleton adaToken)
         (J.String txt       , amt) -> do
             let (cs, name) = T.splitAt 56 txt 
             amt' <- readAmt amt
             cs' <- maybe (fail "Currency symbol from hex") (pure . CurrencySymbol . toBuiltin) $ T.decodeHex cs
             name' <-  maybe (fail "Name from hex") (pure . TokenName . toBuiltin) $ T.decodeHex name
-            pure $ Bf $ Value $ PAM.singleton cs' $ PAM.singleton name' amt'
+            pure $ Bf $ P.Value $ PAM.singleton cs' $ PAM.singleton name' amt'
         _                          -> mzero
         where
             readAmt =  maybe (fail "Read amount from string") pure . readMaybe . T.unpack

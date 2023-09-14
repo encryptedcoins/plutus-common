@@ -6,8 +6,7 @@ module PlutusAppsExtra.Utils.ChainIndex where
 import           Cardano.Node.Emulator.Params (Params (..))
 import           Control.Monad.Catch          (MonadThrow, throwM)
 import qualified Data.Map                     as Map
-import           Ledger                       (DecoratedTxOut (..), TxOut, TxOutRef (..), toTxOut)
-import           Ledger.Value                 (adaOnlyValue)
+import           Ledger                       (DecoratedTxOut (..), TxOut, TxOutRef (..), adaOnlyValue, toTxOut)
 
 import           PlutusAppsExtra.Types.Error  (MkTxError (..))
 

@@ -14,10 +14,10 @@ import           Cardano.Api                      (EraInMode (..))
 import           Cardano.Node.Emulator            (Params (..))
 import           Cardano.Node.Emulator.Fee        (makeAutoBalancedTransactionWithUtxoProvider, utxoProviderFromWalletOutputs)
 import           Control.Monad.Catch              (MonadThrow (..))
-import           Ledger                           (Address, CardanoTx (..), SomeCardanoApiTx (..))
-import           Ledger.Constraints               (ScriptLookups (..), TxConstraints, UnbalancedTx (..), mkTxWithParams)
+import           Ledger                           (Address, CardanoTx (..))
+import           Ledger.Tx.Constraints            (ScriptLookups (..), TxConstraints, UnbalancedTx (..), mkTxWithParams)
 import           Ledger.Index                     (UtxoIndex (..))
-import           Ledger.Tx.CardanoAPI             (toCardanoAddressInEra, toCardanoTxBodyContent)
+import           Ledger.Tx.CardanoAPI             (toCardanoAddressInEra)
 import           Ledger.Typed.Scripts             (Any, ValidatorTypes (..))
 import           PlutusAppsExtra.Types.Error      (BalanceExternalTxError (..), throwEither)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO, toCardanoUtxo)
@@ -31,27 +31,15 @@ balanceExternalTx :: (MonadThrow m)
                   -> TxConstraints (RedeemerType Any) (DatumType Any)
                   -> m CardanoTx
 balanceExternalTx params walletUTXO changeAddress lookups cons = do
-    utx <- throwEither MakeUnbalancedTxError $ mkTxWithParams params lookups cons
-
-    cardanoBuildTx <- case utx of
-            UnbalancedEmulatorTx etx _ _ -> either (throwM . MakeBuildTxFromEmulatorTxError) pure $
-                toCardanoTxBodyContent (pNetworkId params) (emulatorPParams params) [] etx
-            UnbalancedCardanoTx cbt _    -> pure cbt
-
-    utxoIndex <- UtxoIndex <$> toCardanoUtxo params (slTxOutputs lookups)
-
-    cAddress <- throwEither NonBabbageEraChangeAddress $ toCardanoAddressInEra (pNetworkId params) changeAddress
-
-    walletUTXOIndex <- toCardanoUtxo params walletUTXO
-
+    UnbalancedCardanoTx cbt _ <- throwEither MakeUnbalancedTxError $ mkTxWithParams params lookups cons
+    utxoIndex                 <- UtxoIndex <$> toCardanoUtxo params (slTxOutputs lookups)
+    cAddress                  <- throwEither NonBabbageEraChangeAddress $ toCardanoAddressInEra (pNetworkId params) changeAddress
+    walletUTXOIndex           <- toCardanoUtxo params walletUTXO
     let utxoProvider = either (throwM . MakeUtxoProviderError) pure . utxoProviderFromWalletOutputs walletUTXOIndex
-
-    tx <- makeAutoBalancedTransactionWithUtxoProvider
-            params
-            utxoIndex
-            cAddress
-            utxoProvider
-            (throwM . MakeAutoBalancedTxError)
-            cardanoBuildTx
-
-    return $ CardanoApiTx $ SomeTx tx BabbageEraInCardanoMode
+    (`CardanoTx` BabbageEraInCardanoMode) <$> makeAutoBalancedTransactionWithUtxoProvider
+        params
+        utxoIndex
+        cAddress
+        utxoProvider
+        (throwM . MakeAutoBalancedTxError)
+        cbt

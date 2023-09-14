@@ -8,13 +8,13 @@ import           Control.Applicative   (Alternative)
 import           Control.Lens          ((^?))
 import qualified Data.Aeson            as J
 import           Data.Aeson.Lens       (key)
-import           Data.Aeson.Types      (FromJSON (..), Parser, Value)
+import           Data.Aeson.Types      (FromJSON (..), Parser)
 import           Data.Foldable         (asum)
 import qualified Data.Text             as T
 import           Data.Time             (UTCTime, defaultTimeLocale, parseTimeM)
 import           Ledger                (Slot)
 
-parseSlotOrUtc :: Value -> Parser (Either UTCTime Slot)
+parseSlotOrUtc :: J.Value -> Parser (Either UTCTime Slot)
 parseSlotOrUtc val = case val of
     J.String txt -> Left <$> parseTime (T.unpack txt)
     J.Number _   -> Right . fromInteger <$> parseJSON val
@@ -22,7 +22,7 @@ parseSlotOrUtc val = case val of
     _            -> fail "parseSlotOrUtc"
 
 -- Parse slot config or get slot config from plutus config
-parseSlotConfig :: Value -> Parser SlotConfig
+parseSlotConfig :: J.Value -> Parser SlotConfig
 parseSlotConfig val = maybe (parseJSON val) parseJSON $ val ^? key "cicSlotConfig"
 
 parseTime :: (Alternative m, MonadFail m) => String -> m UTCTime

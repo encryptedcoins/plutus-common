@@ -34,11 +34,12 @@ import qualified Data.Text                        as T
 import           Data.Time                        (getCurrentTime)
 import           GHC.Base                         (coerce)
 import           GHC.TypeLits                     (AppendSymbol, KnownSymbol)
-import           Ledger                           (Address (..), CurrencySymbol, Datum, DatumFromQuery (..), DatumHash,
-                                                   DecoratedTxOut (..), Script, ScriptHash, Slot (getSlot), TokenName, TxId,
-                                                   TxOutRef (..), Validator, ValidatorHash, Versioned, stakingCredential)
+import           Ledger                           (Address (..), Datum, DatumFromQuery (..), DatumHash, DecoratedTxOut (..),
+                                                   Script, ScriptHash, Slot (getSlot), TxId, TxOutRef (..), Validator,
+                                                   ValidatorHash, Versioned, fromCardanoValue, stakingCredential)
 import           Network.HTTP.Client              (HttpExceptionContent, Request)
-import           Plutus.V2.Ledger.Api             (Credential (..), Value (..))
+import           Plutus.V2.Ledger.Api             (Credential (..), CurrencySymbol, TokenName)
+import qualified Plutus.V2.Ledger.Api             as P
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoOrder, KupoResponse (..), MkPattern (..), Pattern (..),
@@ -73,7 +74,7 @@ getTxOutFromRef ref = getResponse >>= fmap (join . listToMaybe) . mapM kupoRespo
 getTokenBalanceToSlot :: MkPattern addrPatt => CurrencySymbol -> TokenName -> Maybe Slot -> addrPatt -> IO Integer
 getTokenBalanceToSlot cs tokenName slotTo addrPat = sum . fmap getAmount <$> liftA2 (<>) getSpent getUnspent
     where
-        getAmount KupoResponse{..} = fromMaybe 0 $ PAM.lookup cs (getValue krValue) >>= PAM.lookup tokenName
+        getAmount KupoResponse{..} = fromMaybe 0 $ PAM.lookup cs (P.getValue $ fromCardanoValue krValue) >>= PAM.lookup tokenName
         getUnspent = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated req
         getSpent   = case slotTo of
             Just s -> getKupoResponse @'SUSpent   @'CSCreated @'CSSpent   req{reqCreatedOrSpentAfter = Just s}

@@ -2,22 +2,22 @@
 
 module PlutusAppsExtra.Utils.Value where
 
-import           PlutusTx.AssocMap (singleton, lookup)
+import           Plutus.Script.Utils.Value (CurrencySymbol, TokenName, adaOnlyValue)
+import qualified Plutus.Script.Utils.Value as P
+import           PlutusTx.AssocMap         (lookup, singleton)
 import           PlutusTx.Prelude
-import           Ledger.Value      (CurrencySymbol, Value (..), TokenName, adaOnlyValue)
-import qualified Ledger.Value      as Value
 
-unflattenValue :: [(CurrencySymbol, TokenName, Integer)] -> Value
-unflattenValue = sum . map (\(s, n, i) -> Value.singleton s n i)
+unflattenValue :: [(CurrencySymbol, TokenName, Integer)] -> P.Value
+unflattenValue = sum . map (\(s, n, i) -> P.singleton s n i)
 
-currencyOnlyValue :: CurrencySymbol -> Value -> Value
-currencyOnlyValue symb = maybe zero (Value . singleton symb) . lookup symb . getValue
+currencyOnlyValue :: CurrencySymbol -> P.Value -> P.Value
+currencyOnlyValue symb = maybe zero (P.Value . singleton symb) . lookup symb . P.getValue
 
-isCurrencyOnlyValue :: CurrencySymbol -> Value -> Bool
+isCurrencyOnlyValue :: CurrencySymbol -> P.Value -> Bool
 isCurrencyOnlyValue symb val = val == currencyOnlyValue symb val
 
-currencyAndAdaOnlyValue :: CurrencySymbol -> Value -> Value
+currencyAndAdaOnlyValue :: CurrencySymbol -> P.Value -> P.Value
 currencyAndAdaOnlyValue symb val = adaOnlyValue val + currencyOnlyValue symb val
 
-isCurrencyAndAdaOnlyValue :: CurrencySymbol -> Value -> Bool
+isCurrencyAndAdaOnlyValue :: CurrencySymbol -> P.Value -> Bool
 isCurrencyAndAdaOnlyValue symb val = val == currencyAndAdaOnlyValue symb val

@@ -11,16 +11,15 @@
 module PlutusAppsExtra.Utils.Tx where
 
 import qualified Cardano.Api                            as C
-import qualified Cardano.Api.Byron                      as Byron
+import           Cardano.Api.Byron                      (Tx (ByronTx))
 import           Cardano.Api.Shelley                    (AnyCardanoEra (..), AsType (..), CardanoEra (..), ConsensusMode (..),
-                                                         EraInMode (..), InAnyCardanoEra (..), SerialiseAsCBOR (..), ToJSON,
-                                                         Tx (..), TxMetadataJsonSchema, metadataFromJson, toEraInMode,
-                                                         toShelleyMetadata)
+                                                         EraInMode (..), InAnyCardanoEra (..), KeyWitness (..),
+                                                         SerialiseAsCBOR (..), ShelleyBasedEra (..), ToJSON, Tx (..),
+                                                         TxMetadataJsonSchema, metadataFromJson, toEraInMode, toShelleyMetadata)
 import           Cardano.Chain.UTxO                     (ATxAux (..))
 import qualified Cardano.Crypto.DSIGN                   as Crypto
 import qualified Cardano.Ledger.Alonzo.Data             as Alonzo
 import qualified Cardano.Ledger.Alonzo.Tx               as Alonzo
-import qualified Cardano.Ledger.Alonzo.TxWitness        as Wits
 import           Cardano.Ledger.Babbage.Tx              (ValidatedTx (ValidatedTx))
 import           Cardano.Ledger.Shelley.API             (VKey (VKey), WitVKey (WitVKey))
 import qualified Cardano.Ledger.Shelley.API.Types       as Shelley
@@ -30,22 +29,18 @@ import           Cardano.Wallet.Api.Types               (ApiSerialisedTransactio
 import           Cardano.Wallet.LocalClient.ExportTx    (ExportTx (..), export)
 import           Cardano.Wallet.Primitive.Types.Tx      (SealedTx, cardanoTxIdeallyNoLaterThan, sealedTxFromCardano')
 import           Control.FromSum                        (eitherToMaybe, fromMaybe)
-import           Control.Lens                           (At (at), (&), (?~))
 import           Control.Monad.Catch                    (MonadThrow (throwM))
 import           Data.Aeson                             (ToJSON (..))
 import           Data.Aeson.Extras                      (encodeByteString, tryDecode)
 import           Data.Functor                           ((<&>))
 import qualified Data.Map                               as Map
 import           Data.Maybe.Strict                      (maybeToStrictMaybe)
-import qualified Data.Set                               as Set
 import           Data.Text                              (Text)
 import           Ledger                                 (PaymentPubKeyHash (..), PubKey (..), PubKeyHash (..), Signature (..),
-                                                         Tx (..), TxId, TxOut (getTxOut), cardanoTxMap,
-                                                         getCardanoTxProducedOutputs, signatures)
-import           Ledger.Constraints                     (UnbalancedTx)
-import           Ledger.Tx                              (CardanoTx (..), SomeCardanoApiTx (..))
+                                                         TxId, TxOut (getTxOut), getCardanoTxProducedOutputs)
+import           Ledger.Tx                              (CardanoTx (..))
 import           Ledger.Tx.CardanoAPI                   (getRequiredSigners)
-import           Ouroboros.Consensus.Shelley.Eras       (StandardAlonzo, StandardBabbage, StandardShelley)
+import           Ledger.Tx.Constraints                  (UnbalancedTx)
 import           Plutus.V1.Ledger.Bytes                 (bytes, fromBytes)
 import           Plutus.V2.Ledger.Api                   (BuiltinByteString, fromBuiltin, toBuiltin)
 import           PlutusAppsExtra.IO.ChainIndex.Plutus   (getTxFromId)
@@ -62,59 +57,53 @@ textToCardanoTx :: Text -> Maybe CardanoTx
 textToCardanoTx txt = do
     bs <- eitherToMaybe $ tryDecode txt
     tx <- eitherToMaybe $ deserialiseFromCBOR (AsTx AsBabbageEra) bs
-    return $ CardanoApiTx $ SomeTx tx BabbageEraInCardanoMode
+    return $ CardanoTx tx BabbageEraInCardanoMode
 
 cardanoTxToText :: CardanoTx -> Maybe Text
-cardanoTxToText (CardanoApiTx (SomeTx tx BabbageEraInCardanoMode)) = Just $ encodeByteString $ serialiseToCBOR tx
+cardanoTxToText (CardanoTx tx BabbageEraInCardanoMode) = Just $ encodeByteString $ serialiseToCBOR tx
 cardanoTxToText _ = Nothing
 
 apiSerializedTxToCardanoTx :: ApiSerialisedTransaction -> Maybe CardanoTx
-apiSerializedTxToCardanoTx = fmap CardanoApiTx . toSomeTx . toAnyEraTx
+apiSerializedTxToCardanoTx = toSomeTx . toAnyEraTx
     where
         toAnyEraTx = cardanoTxIdeallyNoLaterThan (AnyCardanoEra BabbageEra) . getApiT . transaction
-        toSomeTx (InAnyCardanoEra cera tx) = SomeTx tx <$> toEraInMode cera CardanoMode
+        toSomeTx (InAnyCardanoEra cera tx) = CardanoTx tx <$> toEraInMode cera CardanoMode
 
-cardanoTxToSealedTx :: CardanoTx -> Maybe SealedTx
-cardanoTxToSealedTx = \case
-    (CardanoApiTx (SomeTx tx _)) -> Just $ sealedTxFromCardano' tx
-    _                            -> Nothing
+cardanoTxToSealedTx :: CardanoTx -> SealedTx
+cardanoTxToSealedTx (CardanoTx tx _) = sealedTxFromCardano' tx
 
 addMetadataToCardanoTx :: (MonadThrow m, ToJSON a) => CardanoTx -> Maybe a -> TxMetadataJsonSchema -> m CardanoTx
-addMetadataToCardanoTx ctx Nothing _ = pure ctx 
+addMetadataToCardanoTx ctx Nothing _ = pure ctx
 addMetadataToCardanoTx ctx (Just val) schema = case metadataFromJson schema (toJSON val) of
     Left _     -> throwM UnparsableMetadata
     Right meta -> pure $ addMetadataToCardanoTx' ctx meta
-    
+
 addMetadataToCardanoTx'  :: CardanoTx -> C.TxMetadata -> CardanoTx
-addMetadataToCardanoTx' ctx (C.TxMetadata meta) = cardanoTxMap onTx onSomeTx ctx
-    where
-        metadataBs = serialiseToCBOR $ C.TxMetadata meta
-        metadataShelley = maybeToStrictMaybe $ Just $ Shelley.Metadata $ toShelleyMetadata meta
-        metadataAllegra mb = mb <&> \(Allegra.AuxiliaryData a s) -> Allegra.AuxiliaryData a s
-        metadataAlonzo  mb = mb <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta, ..}
-        metadataBabbage mb = mb <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta, ..}
 
-        onTx tx = tx { txMetadata = Just $ toBuiltin metadataBs}
+addMetadataToCardanoTx' (CardanoTx (ByronTx (ATxAux tx wit _)) eraInMode) (C.TxMetadata meta) 
+    = CardanoTx (ByronTx (ATxAux tx wit (serialiseToCBOR $ C.TxMetadata meta))) eraInMode
 
-        onSomeTx (SomeTx (Byron.ByronTx (ATxAux tx wit _)) era)
-            = SomeTx (Byron.ByronTx (ATxAux tx wit metadataBs)) era
-        onSomeTx (SomeTx (ShelleyTx sera tx) era) = (`SomeTx` era) $ case sera of
-            C.ShelleyBasedEraShelley -> ShelleyTx C.ShelleyBasedEraShelley (addShelley tx)
-            C.ShelleyBasedEraAllegra -> ShelleyTx C.ShelleyBasedEraAllegra (addAllegra tx)
-            C.ShelleyBasedEraMary    -> ShelleyTx C.ShelleyBasedEraMary    (addAllegra tx)
-            C.ShelleyBasedEraAlonzo  -> ShelleyTx C.ShelleyBasedEraAlonzo  (addAlonzo  tx)
-            C.ShelleyBasedEraBabbage -> ShelleyTx C.ShelleyBasedEraBabbage (addBabbage tx)
+addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraShelley Shelley.Tx{..}) eraInMode) (C.TxMetadata meta)
+    = let metadataShelley = maybeToStrictMaybe $ Just $ Shelley.Metadata $ toShelleyMetadata meta
+      in CardanoTx (ShelleyTx C.ShelleyBasedEraShelley (Shelley.Tx{auxiliaryData = metadataShelley, ..})) eraInMode
 
-        addShelley :: Shelley.Tx StandardShelley -> Shelley.Tx StandardShelley
-        addShelley Shelley.Tx{..} = Shelley.Tx{auxiliaryData = metadataShelley, ..}
+addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraAllegra Shelley.Tx{..}) eraInMode) (C.TxMetadata meta)
+    = let meta' = toShelleyMetadata meta
+          metadataAllegra = auxiliaryData <&> \(Allegra.AuxiliaryData a s) -> Allegra.AuxiliaryData (a <> meta') s
+      in CardanoTx (ShelleyTx C.ShelleyBasedEraAllegra (Shelley.Tx{auxiliaryData = metadataAllegra, ..})) eraInMode
 
-        addAllegra Shelley.Tx{..} = Shelley.Tx{auxiliaryData = metadataAllegra auxiliaryData, ..}
+addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraMary Shelley.Tx{..}) eraInMode) (C.TxMetadata meta)
+    = let meta' = toShelleyMetadata meta
+          metadataMarry = auxiliaryData <&> \(Allegra.AuxiliaryData a s) -> Allegra.AuxiliaryData (a <> meta') s
+      in CardanoTx (ShelleyTx C.ShelleyBasedEraMary (Shelley.Tx{auxiliaryData = metadataMarry, ..})) eraInMode
 
-        addAlonzo :: ValidatedTx StandardAlonzo -> ValidatedTx StandardAlonzo
-        addAlonzo ValidatedTx{..} = ValidatedTx{Alonzo.auxiliaryData = metadataAlonzo auxiliaryData, ..}
+addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraAlonzo ValidatedTx{..}) eraInMode) (C.TxMetadata meta)
+    = let metadataAlonzo = auxiliaryData <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta, ..}
+      in CardanoTx (ShelleyTx C.ShelleyBasedEraAlonzo (ValidatedTx{Alonzo.auxiliaryData = metadataAlonzo, ..})) eraInMode
 
-        addBabbage :: ValidatedTx StandardBabbage -> ValidatedTx StandardBabbage
-        addBabbage ValidatedTx{..} = ValidatedTx{Alonzo.auxiliaryData = metadataBabbage auxiliaryData, ..}
+addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraBabbage ValidatedTx{..}) eraInMode) (C.TxMetadata meta)
+    = let metadataBabbage = auxiliaryData <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta, ..}
+      in CardanoTx (ShelleyTx C.ShelleyBasedEraBabbage (ValidatedTx{Alonzo.auxiliaryData = metadataBabbage, ..})) eraInMode
 
 ------------------------ External keys and signatures -------------------------
 
@@ -125,16 +114,17 @@ textToSignature :: Text -> Maybe Signature
 textToSignature txt = Signature . toBuiltin <$> decodeHex txt
 
 addCardanoTxSignature :: PubKey -> Signature -> CardanoTx -> CardanoTx
-addCardanoTxSignature pubKey sig = cardanoTxMap addSignatureTx addSignatureCardano
+addCardanoTxSignature pubKey sig (CardanoTx (Tx body wits) eraInMode) = CardanoTx (Tx body wits') eraInMode
     where
-        addSignatureTx tx = tx & signatures . at pubKey ?~ sig
-
-        addSignatureCardano (CardanoApiEmulatorEraTx ctx)
-            = CardanoApiEmulatorEraTx (addSignatureCardano' ctx)
-
-        addSignatureCardano' (ShelleyTx shelleyBasedEra (ValidatedTx body wits isValid aux)) =
-            let wits' = wits <> mempty { Wits.txwitsVKey = Set.singleton $ WitVKey (VKey vk) sig' }
-            in  ShelleyTx shelleyBasedEra (ValidatedTx body wits' isValid aux)
+        wits' = wits <> [ShelleyKeyWitness shelleyEra witVKey]
+        witVKey = WitVKey (VKey vk) sig'
+        shelleyEra = case eraInMode of
+            ByronEraInCardanoMode   -> error "addCardanoTxSignature: Byron era isn't ShelleyBasedEra."
+            ShelleyEraInCardanoMode -> ShelleyBasedEraShelley
+            AllegraEraInCardanoMode -> ShelleyBasedEraAllegra
+            MaryEraInCardanoMode    -> ShelleyBasedEraMary
+            AlonzoEraInCardanoMode  -> ShelleyBasedEraAlonzo
+            BabbageEraInCardanoMode -> ShelleyBasedEraBabbage
 
         vk = fromMaybe (error "addCardanoTxSignature: deserialise VerKeyDSIGN from a PubKey.")
             . Crypto.rawDeserialiseVerKeyDSIGN
@@ -154,5 +144,5 @@ getTxDatums = map ((\(C.TxOut _ _ c _) -> c) . getTxOut) . Map.elems . getCardan
 
 txIsSignedByKey :: TxId -> BuiltinByteString -> IO Bool
 txIsSignedByKey txId pkh = getTxFromId txId <&> \case
-    Just (SomeTx tx BabbageEraInCardanoMode) -> PaymentPubKeyHash (PubKeyHash pkh) `elem` getRequiredSigners tx
+    Just (CardanoTx tx BabbageEraInCardanoMode) -> PaymentPubKeyHash (PubKeyHash pkh) `elem` getRequiredSigners tx
     _ -> False

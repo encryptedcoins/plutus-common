@@ -14,13 +14,13 @@ module PlutusAppsExtra.Types.Tx where
 import           Cardano.Api                      (FromJSON, ToJSON)
 import           Control.Monad.State              (State, execState, gets)
 import           GHC.Generics                     (Generic)
-import           Ledger.Constraints.OffChain      (ScriptLookups)
-import           Ledger.Constraints.TxConstraints (TxConstraints)
 import           Ledger.Typed.Scripts             (Any, ValidatorTypes (..))
 import           Plutus.V2.Ledger.Api             (POSIXTime)
 import           PlutusTx.Prelude                 hiding (Semigroup, fromInteger, mapMaybe, mempty, toList, unless, (<$>))
 import           Prelude                          (Monoid (mempty), Show)
 
+import           Ledger.Tx.Constraints            (TxConstraints)
+import           Ledger.Tx.Constraints.OffChain   (ScriptLookups)
 import           PlutusAppsExtra.Types.Error      (TxBuilderError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 

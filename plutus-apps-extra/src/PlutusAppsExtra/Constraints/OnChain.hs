@@ -11,6 +11,7 @@ module PlutusAppsExtra.Constraints.OnChain where
 
 import           Ledger                    (contains, interval)
 import           Plutus.V2.Ledger.Api
+import qualified Plutus.V2.Ledger.Api      as P
 import           Plutus.V2.Ledger.Contexts (findDatum, findOwnInput, ownCurrencySymbol)
 import           PlutusTx.AssocMap         (lookup)
 import           PlutusTx.Prelude          hiding (Semigroup (..), fromInteger, mempty, toList, unless, (<$>))
@@ -81,7 +82,7 @@ checkOwnInput ctx f = fromMaybe False $ do
 
 {-# INLINABLE currencyMintedOrBurned #-}
 currencyMintedOrBurned :: TxInfo -> CurrencySymbol -> Bool
-currencyMintedOrBurned info cs = maybe False (not . null) $ lookup cs $ getValue $ txInfoMint info
+currencyMintedOrBurned info cs = maybe False (not . null) $ lookup cs $ P.getValue $ txInfoMint info
 
 -- PlutusTx AssocMap is not sorted automatically.
 -- Therefore, the second argument of tokensMinted must be pre-sorted manually (preferably off-chain).

@@ -40,13 +40,14 @@ import           Ledger                               (DecoratedTxOut, Language 
 import           Ledger.Typed.Scripts                 (mkUntypedMintingPolicy)
 import           Plutus.Script.Utils.V2.Scripts       (MintingPolicy, scriptCurrencySymbol)
 import           Plutus.V2.Ledger.Api                 (CurrencySymbol, ScriptContext (..), TokenName, TxInfo (..), TxOutRef (..),
-                                                       Value, mkMintingPolicyScript, singleton)
+                                                       mkMintingPolicyScript, singleton)
 import           Plutus.V2.Ledger.Contexts            (ownCurrencySymbol, spendsOutput)
 import qualified PlutusTx
 import qualified PlutusTx.AssocMap                    as AssocMap
 import           PlutusTx.Prelude                     hiding (Monoid (..), Semigroup (..))
 import qualified Prelude                              as Haskell
 
+import qualified Plutus.V2.Ledger.Api                 as P
 import           PlutusAppsExtra.Constraints.OffChain (tokensMintedTx, utxoSpentPublicKeyTx)
 import           PlutusAppsExtra.Types.Tx             (TransactionBuilder)
 
@@ -64,7 +65,7 @@ PlutusTx.makeLift ''OneShotCurrencyParams
 
 -------------------------------- On-Chain ------------------------------------
 
-oneShotCurrencyValue :: CurrencySymbol -> OneShotCurrencyParams -> Value
+oneShotCurrencyValue :: CurrencySymbol -> OneShotCurrencyParams -> P.Value
 oneShotCurrencyValue s OneShotCurrencyParams{curAmounts = amts} =
     let values = map (\(tn, i) -> singleton s tn i) (AssocMap.toList amts)
     in fold values
@@ -109,7 +110,7 @@ mkCurrency ref amts =
 currencySymbol :: OneShotCurrencyParams -> CurrencySymbol
 currencySymbol = scriptCurrencySymbol . oneShotCurrencyPolicy
 
-currencyValue :: OneShotCurrencyParams -> Value
+currencyValue :: OneShotCurrencyParams -> P.Value
 currencyValue cur = oneShotCurrencyValue (currencySymbol cur) cur
 
 -- Constraints that the OneShotCurrency is minted in the transaction

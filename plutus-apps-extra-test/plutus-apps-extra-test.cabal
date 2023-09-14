@@ -67,7 +67,6 @@ test-suite plutus-apps-extra-test
     plutus-tx-extra                        -any,
     plutus-ledger                          -any,
     plutus-ledger-api                      -any,
-    plutus-ledger-constraints              -any,
     plutus-script-utils                    -any,
     plutus-use-cases                       -any,
     QuickCheck                             -any,
