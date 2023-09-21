@@ -10,9 +10,10 @@ import           Control.Monad.State                  (MonadIO (..), StateT, eva
 import           Data.Either                          (isRight)
 import qualified Data.Map                             as Map
 import           Data.Maybe                           (fromJust, isNothing, listToMaybe, mapMaybe)
-import           Ledger                               (Address (..), CardanoTx (..), DecoratedTxOut (..), TxOutRef (..), Value)
-import           Ledger.Ada                           (adaValueOf)
+import           Ledger                               (Address (..), CardanoTx (..), DecoratedTxOut (..), TxOutRef (..),
+                                                       adaValueOf, toCardanoValue)
 import           Plutus.V1.Ledger.Api                 (Credential (..))
+import qualified Plutus.V2.Ledger.Api                 as P
 import           PlutusAppsExtra.Constraints.Balance  (balanceExternalTx)
 import           PlutusAppsExtra.Constraints.OffChain (useAsCollateralTx')
 import           PlutusAppsExtra.IO.Time              (currentTime)
@@ -51,10 +52,11 @@ withAdaUtxo i addr = do
     ref <- liftIO genTxOutRef
     modify (<> Map.fromList [(ref, adaOut)])
 
-withValueUtxo :: Value -> Address -> TxTestM ()
+withValueUtxo :: P.Value -> Address -> TxTestM ()
 withValueUtxo val addr = do
-    let tokensOut = case addr of
-            (Address (PubKeyCredential pkh) mbSc) -> PublicKeyDecoratedTxOut pkh mbSc val Nothing Nothing
-            (Address (ScriptCredential vh)  mbSc) -> ScriptDecoratedTxOut vh mbSc val inlinedUnitInTxOut Nothing Nothing
+    let val' = either (error . show) id $ toCardanoValue val
+        tokensOut = case addr of
+            (Address (PubKeyCredential pkh) mbSc) -> PublicKeyDecoratedTxOut pkh mbSc val' Nothing Nothing
+            (Address (ScriptCredential vh)  mbSc) -> ScriptDecoratedTxOut vh mbSc val' inlinedUnitInTxOut Nothing Nothing
     ref <- liftIO genTxOutRef
     modify (<> Map.fromList [(ref, tokensOut)])

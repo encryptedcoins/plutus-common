@@ -107,7 +107,6 @@ library
       plutus-example                         -any,
       plutus-ledger                          -any,
       plutus-ledger-api                      -any,
-      plutus-ledger-constraints              -any,
       plutus-pab                             -any,
       plutus-script-utils                    -any,
       plutus-tx                              -any,

@@ -10,6 +10,7 @@
 
 module PlutusAppsExtra.Utils.Kupo where
 
+import qualified Cardano.Api                   as C
 import           Cardano.Chain.Block           (HeaderHash)
 import           Codec.Serialise               (deserialise)
 import           Data.Aeson                    (FromJSON (..), KeyValue ((.=)), ToJSON, withObject, (.:), (.:?))
@@ -19,19 +20,19 @@ import qualified Data.Aeson.Key                as J
 import qualified Data.Aeson.KeyMap             as J
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.Coerce                   (coerce)
-import           Data.Fixed                    (Fixed (..))
 import           Data.Functor                  ((<&>))
 import qualified Data.Text                     as T
 import           GHC.Generics                  (Generic)
-import           Ledger                        (Address (..), AssetClass, CurrencySymbol, Datum (..), DatumFromQuery (..),
-                                                DatumHash (..), Language (..), NetworkId, Script, ScriptHash (..), Slot (Slot),
-                                                TokenName, TxId (..), TxOutRef (..), Validator (..), ValidatorHash (..), Value,
-                                                Versioned (..), noAdaValue)
-import qualified Ledger.Ada                    as Ada
-import           Ledger.Value                  (AssetClass (..), TokenName (..), flattenValue)
-import qualified Ledger.Value                  as Value
-import           Plutus.V1.Ledger.Api          (Credential (..), CurrencySymbol (..), StakingCredential (..), fromBuiltin,
-                                                toBuiltin)
+import           Ledger                        (Address (..), Datum (..), DatumFromQuery (..), DatumHash (..), Language (..),
+                                                NetworkId, Script, ScriptHash (..), Slot (Slot), TxId (..), TxOutRef (..),
+                                                Validator (..), ValidatorHash (..), Versioned (..), fromCardanoValue,
+                                                toCardanoValue)
+import           Plutus.Script.Utils.Ada       (lovelaceOf, toValue)
+import           Plutus.Script.Utils.Value     (AssetClass (..))
+import           Plutus.V1.Ledger.Api          (Credential (..), CurrencySymbol (..), StakingCredential (..), TokenName,
+                                                fromBuiltin, toBuiltin)
+import           Plutus.V1.Ledger.Value        (flattenValue)
+import           Plutus.V2.Ledger.Api          (TokenName (..), Value (..))
 import           PlutusAppsExtra.Utils.Address (addressToBech32, bech32ToAddress)
 import qualified PlutusTx.AssocMap             as PMap
 import           PlutusTx.Builtins             (BuiltinByteString)
@@ -96,7 +97,7 @@ data KupoResponse = KupoResponse
     { krTxId :: TxId
     , krOutputIndex :: Integer
     , krAddress :: Address
-    , krValue :: Value
+    , krValue :: C.Value
     , krDatumHash :: Maybe DatumHash
     , krDatumType :: Maybe KupoDatumType
     , krScriptHash :: Maybe ScriptHash
@@ -151,9 +152,9 @@ kupoResponseToJSON networkId KupoResponse{..} = J.object
     , "created_at"    .= krCreatedAt
     , "spent_at"      .= krSpentAt
     , "value"         .= J.Object
-        [ "coins"     .= (\(MkFixed i) -> i) (Ada.getAda (Ada.fromValue krValue))
-        , "assets"    .= J.fromList (map (\(cs, tn, amt) ->
-            (Data.Aeson.Key.fromText $ encodeHex $ fromBuiltin $ unCurrencySymbol cs <> unTokenName tn, amt)) $ flattenValue (noAdaValue krValue))
+        [ "coins"     .= toInteger (C.selectLovelace krValue)
+        , "assets"    .= J.fromList (flip fmap (flattenValue (fromCardanoValue krValue)) 
+            $ \(cs, tn, amt) -> (Data.Aeson.Key.fromText $ encodeHex $ fromBuiltin $ unCurrencySymbol cs <> unTokenName tn, amt))
         ]
     ]
 
@@ -191,22 +192,22 @@ instance FromJSON (Kupo Datum) where
     parseJSON = withObject "Kupo Datum" $ \o -> o .: "datum" >>=
         maybe (fail "not a hex") (pure . Kupo . Datum . deserialise . LBS.fromStrict) . decodeHex
 
-instance FromJSON (Kupo Value) where
+instance FromJSON (Kupo C.Value) where
     parseJSON = withObject "Kupo Value" $ \o -> do
-            coins <-  o .: "coins" <&> Ada.toValue . Ada.lovelaceOf
+            coins <-  o .: "coins" <&> toValue . lovelaceOf
             assets <- o .: "assets" >>= parseAssets
-            pure $ Kupo $ coins <> assets
+            either (fail . show) (pure . Kupo) $ toCardanoValue $ coins <> assets
         where
             parseAssets = fmap mconcat . traverse parseAsset . J.toList
-            parseAsset (asset, amount) = Value.Value . PMap.fromList <$> do
+            parseAsset (asset, amount) = Value . PMap.fromList <$> do
                 amount' <- parseJSON amount
                 case span (/= '.') (J.toString asset) of
                     (cs, '.' : name) -> do
-                        name'   <- Value.TokenName      <$> toBbs name
-                        cs'     <- Value.CurrencySymbol <$> toBbs cs
+                        name'   <- TokenName      <$> toBbs name
+                        cs'     <- CurrencySymbol <$> toBbs cs
                         pure [(cs', PMap.singleton name' amount')]
                     (cs, _) -> do
-                        cs'     <- Value.CurrencySymbol <$> toBbs cs
+                        cs'     <- CurrencySymbol <$> toBbs cs
                         pure [(cs', PMap.singleton "" amount')]
             toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex . T.pack
 

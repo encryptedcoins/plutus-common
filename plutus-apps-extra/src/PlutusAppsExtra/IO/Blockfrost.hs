@@ -25,10 +25,11 @@ import           Data.Functor                     ((<&>))
 import           Data.List                        (intersect, (\\))
 import           Data.Maybe                       (listToMaybe)
 import           Data.Text                        (Text)
-import           Ledger                           (Address, AssetClass, CurrencySymbol, StakePubKeyHash (..), TokenName)
-import           Ledger.Value                     (AssetClass (..), valueOf)
+import           Ledger                           (Address, StakePubKeyHash (..))
 import           Network.HTTP.Client              (HttpException (..), newManager)
 import           Network.HTTP.Client.TLS          (tlsManagerSettings)
+import           Plutus.Script.Utils.Value        (AssetClass (..), CurrencySymbol, TokenName)
+import qualified Plutus.V1.Ledger.Value           as P
 import           PlutusAppsExtra.Types.Error      (BlockfrostError (UnknownNetworkMagic), ConnectionError (..))
 import           PlutusAppsExtra.Utils.Address    (spkhToStakeCredential)
 import           PlutusAppsExtra.Utils.Blockfrost (AccDelegationHistoryResponse (..), AssetHistoryResponse, AssetTxsResponse (..),
@@ -64,7 +65,7 @@ verifyAsset network cs token amount addr = do
     history <- getAssetTxs network cs token
     foldM (\res (atrTxHash -> txId) -> (res <|>) <$> (getTxUtxo network txId <&> findOutput txId . turOutputs)) Nothing history
     where
-        findOutput txId outs = const (Just txId) =<< find (\o -> turoAddress o == addr && valueOf (turoAmount o) cs token == amount) outs
+        findOutput txId outs = const (Just txId) =<< find (\o -> turoAddress o == addr && P.valueOf (turoAmount o) cs token == amount) outs
 
 verifyAssetFast 
     :: NetworkId
@@ -84,7 +85,7 @@ verifyAssetFast network cs token recepients saveIntermidiate verified = do
         -- end of token history
         go rs [] = pure $ map (Left . fst) rs
         go rs ((atrTxHash -> txId) : hs) = do
-            pairs <- map (\o -> (turoAddress o, valueOf (turoAmount o) cs token)) . turOutputs <$> getTxUtxo network txId
+            pairs <- map (\o -> (turoAddress o, P.valueOf (turoAmount o) cs token)) . turOutputs <$> getTxUtxo network txId
             let res = map (\(a,b) -> (a,b,txId)) $ pairs `intersect` rs
                 currentCounter = total - length rs
             liftIO $ maybe (pure ()) ($ res) saveIntermidiate

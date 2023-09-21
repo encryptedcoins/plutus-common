@@ -13,7 +13,6 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE ViewPatterns          #-}
 
 module PlutusAppsExtra.IO.Wallet where
 
@@ -48,24 +47,27 @@ import qualified Data.Text                                          as T
 import           Data.Text.Class                                    (FromText (fromText))
 import           Data.Void                                          (Void)
 import           GHC.Generics                                       (Generic)
-import           Ledger                                             (Ada, Address, CardanoTx (..), DecoratedTxOut (..),
+import           Ledger                                             (Address, CardanoTx (..), DecoratedTxOut (..),
                                                                      PaymentPubKeyHash (PaymentPubKeyHash), PubKeyHash,
-                                                                     StakingCredential, TxOutRef, Value, _decoratedTxOutAddress,
+                                                                     StakingCredential, TxOutRef, _decoratedTxOutAddress,
+                                                                     decoratedTxOutPlutusValue, fromCardanoValue,
                                                                      getCardanoTxOutputs, toPlutusAddress, txOutAddress,
                                                                      txOutValue)
-import qualified Ledger.Ada                                         as Ada
-import           Ledger.Constraints                                 (ScriptLookups, TxConstraints, mkTxWithParams,
-                                                                     mustPayToPubKey, mustPayToPubKeyAddress)
 import           Ledger.Tx                                          (getCardanoTxId)
 import           Ledger.Tx.CardanoAPI                               (unspentOutputsTx)
 import           Ledger.Typed.Scripts                               (ValidatorTypes (..))
-import           Ledger.Value                                       (leq)
 import           Network.HTTP.Client                                (HttpExceptionContent, Request)
-import           PlutusAppsExtra.IO.ChainIndex                      (HasChainIndex(..), getUtxosAt, getRefsAt)
+import           Plutus.Script.Utils.Value                          (leq)
+import           PlutusAppsExtra.IO.ChainIndex                      (HasChainIndex (..), getRefsAt, getUtxosAt)
 import           PlutusTx.IsData                                    (FromData, ToData)
 import           PlutusTx.Prelude                                   (zero, (-))
 import           Prelude                                            hiding ((-))
 
+import           Ledger.Tx.Constraints                              (ScriptLookups, TxConstraints, mkTxWithParams,
+                                                                     mustPayToPubKey, mustPayToPubKeyAddress)
+import qualified Plutus.Script.Utils.Ada                            as Ada
+import qualified Plutus.Script.Utils.Ada                            as P
+import qualified Plutus.V2.Ledger.Api                               as P
 import           PlutusAppsExtra.Types.Error                        (ConnectionError, MkTxError (..), WalletError (..),
                                                                      throwEither, throwMaybe)
 import           PlutusAppsExtra.Utils.Address                      (addressToKeyHashes, bech32ToAddress)
@@ -157,11 +159,11 @@ ownAddressesBech32 = do
     pure $ map (^. key "id"._String) as
 
 -- Get all value at a wallet
-getWalletValue :: (HasWallet m, HasChainIndex m) => m Value
-getWalletValue = mconcat . fmap _decoratedTxOutValue . Map.elems <$> getWalletUtxos
+getWalletValue :: (HasWallet m, HasChainIndex m) => m P.Value
+getWalletValue = mconcat . fmap decoratedTxOutPlutusValue . Map.elems <$> getWalletUtxos
 
 -- Get all ada at a wallet
-getWalletAda :: (HasWallet m, HasChainIndex m) => m Ada
+getWalletAda :: (HasWallet m, HasChainIndex m) => m P.Ada
 getWalletAda = Ada.fromValue <$> getWalletValue
 
 getWalletRefs :: (HasWallet m, HasChainIndex m) => m [TxOutRef]
@@ -172,13 +174,13 @@ getWalletUtxos :: (HasWallet m, HasChainIndex m) => m MapUTXO
 getWalletUtxos = ownAddresses >>= mapM getUtxosAt <&> mconcat
 
 -- Get wallet total profit from a transaction.
-getTxProfit :: HasWallet m => CardanoTx -> MapUTXO -> m Value
+getTxProfit :: HasWallet m => CardanoTx -> MapUTXO -> m P.Value
 getTxProfit tx txUtxos = do
         addrs <- ownAddresses
         let txOuts   = Map.elems txUtxos
             spent    = getTotalValue addrs _decoratedTxOutValue _decoratedTxOutAddress txOuts
             produced = getTotalValue addrs txOutValue (toPlutusAddress . txOutAddress) $ getCardanoTxOutputs tx
-        pure $ produced - spent
+        pure $ fromCardanoValue produced - fromCardanoValue spent
     where
         getTotalValue addrs getValue getAddr = mconcat . map getValue . filter ((`elem` addrs) . getAddr)
 
@@ -188,16 +190,16 @@ isProfitableTx tx txUtxos = leq zero <$> getTxProfit tx txUtxos
 ------------------------------------------- Tx functions -------------------------------------------
 
 signTx :: HasWallet m => CardanoTx -> m CardanoTx
-signTx (cardanoTxToSealedTx -> Just stx) = do
+signTx ctx = do
     ppUser   <- passphrase <$> getRestoredWallet
     walletId <- getWalletId
-    asTx <- sign walletId (coerce ppUser)
+    asTx     <- sign walletId (coerce ppUser)
     throwMaybe (ConvertApiSerialisedTxToCardanoTxError asTx) $ apiSerializedTxToCardanoTx asTx
     where
+        stx = cardanoTxToSealedTx ctx
         sign walletId pp = getFromEndpointWallet $ Client.signTransaction Client.transactionClient
             (ApiT walletId)
             (ApiSignTransactionPostData (ApiT stx) (ApiT pp))
-signTx ctx = throwM $ ConvertCardanoTxToSealedTxError ctx
 
 balanceTx ::
     ( HasWallet m
@@ -217,13 +219,13 @@ balanceTx params lookups cons = do
 
 -- Send a balanced transaction to Cardano Wallet Backend and return immediately
 submitTx :: HasWallet m => CardanoTx -> m ()
-submitTx (cardanoTxToSealedTx -> Just stx) = do
+submitTx ctx = do
+    let stx = cardanoTxToSealedTx ctx
     walletId <- getWalletId
     void $ getFromEndpointWallet $
         Client.submitTransaction Client.transactionClient
             (ApiT walletId)
             (ApiSerialisedTransaction $ ApiT stx)
-submitTx ctx = throwM $ ConvertCardanoTxToSealedTxError ctx
 
 -- Send a balanced transaction to Cardano Wallet Backend and wait until transaction is confirmed or declined
 submitTxConfirmed :: HasWallet m => CardanoTx -> m ()
@@ -258,9 +260,7 @@ getWalletTxOutRefs params pkh mbSkc n = do
     liftIO $ print signedTx
     liftIO $ putStrLn "Submitting..."
     submitTxConfirmed signedTx
-    let refs = case signedTx of
-            EmulatorTx _    -> throwM CantExtractTxOutRefsFromEmulatorTx
-            CardanoApiTx tx -> Map.keys $ unspentOutputsTx tx
+    let refs = Map.keys $ unspentOutputsTx signedTx
     liftIO $ putStrLn "Submitted!"
     return refs
     where

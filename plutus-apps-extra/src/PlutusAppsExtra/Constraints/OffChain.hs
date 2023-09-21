@@ -10,24 +10,34 @@
 
 module PlutusAppsExtra.Constraints.OffChain where
 
-import           Control.Monad                       (liftM2, when)
-import           Control.Monad.State                 (MonadState (..))
-import           Data.Functor                        (($>))
-import           Data.List                           (find)
-import qualified Data.Map                            as Map
-import           Data.Maybe                          (isJust, isNothing)
-import           Data.Text                           (Text)
-import           Ledger                              (DecoratedTxOut (..), Slot, Versioned, mintingPolicyHash, validatorHash)
-import           Ledger.Address                      (PaymentPubKeyHash)
-import           Ledger.Constraints.OffChain         (mintingPolicy, otherData, otherScript, unspentOutputs)
-import           Ledger.Constraints.TxConstraints
-import           Ledger.Constraints.ValidityInterval (interval)
-import           Plutus.V2.Ledger.Api                hiding (singleton)
+import           Control.Monad                          (liftM2, when)
+import           Control.Monad.State                    (MonadState (..))
+import           Data.Functor                           (($>))
+import           Data.List                              (find)
+import qualified Data.Map                               as Map
+import           Data.Maybe                             (isJust, isNothing)
+import           Data.Text                              (Text)
+import           Ledger                                 (DecoratedTxOut (..), Slot, Versioned, mintingPolicyHash, validatorHash)
+import           Ledger.Address                         (PaymentPubKeyHash)
+import           Plutus.V2.Ledger.Api                   (Address (Address), Credential (PubKeyCredential, ScriptCredential),
+                                                         Datum (Datum), MintingPolicy (..), POSIXTime, PubKeyHash,
+                                                         Redeemer (Redeemer), StakingCredential, ToData (..), TxOutRef,
+                                                         Validator (..), ValidatorHash)
+import qualified Plutus.V2.Ledger.Api                   as P                                                     
 import           Prelude
 
-import           PlutusAppsExtra.Types.Error         (TxBuilderError (..))
-import           PlutusAppsExtra.Types.Tx            (TransactionBuilder, TxConstructor (..), getBuilderResult)
-import           PlutusAppsExtra.Utils.ChainIndex    (filterPubKeyUtxos, filterScriptUtxos)
+import           Ledger.Tx.Constraints                  (TxConstraint (MustPayToAddress), mintingPolicy, mustBeSignedBy,
+                                                         mustPayToAddressWithReferenceMintingPolicy,
+                                                         mustPayToAddressWithReferenceValidator, mustReferenceOutput,
+                                                         mustSpendPubKeyOutput, mustSpendScriptOutput,
+                                                         mustSpendScriptOutputWithReference, mustUseOutputAsCollateral,
+                                                         mustValidateInSlotRange, mustValidateInTimeRange, otherData, otherScript,
+                                                         unspentOutputs)
+import           Ledger.Tx.Constraints.TxConstraints    (TxOutDatum, mustMintValueWithRedeemerAndReference, singleton)
+import           Ledger.Tx.Constraints.ValidityInterval (interval)
+import           PlutusAppsExtra.Types.Error            (TxBuilderError (..))
+import           PlutusAppsExtra.Types.Tx               (TransactionBuilder, TxConstructor (..), getBuilderResult)
+import           PlutusAppsExtra.Utils.ChainIndex       (filterPubKeyUtxos, filterScriptUtxos)
 
 (<&&>) :: (Semigroup a, Monad m) => m a -> m a -> m a
 (<&&>) = liftM2 (<>)
@@ -144,24 +154,24 @@ useAsCollateralTx' (Just ref) = do
                         }
             return $ Just ref
 
-utxoProducedTx :: Address -> Value -> Maybe (TxOutDatum Datum) -> TransactionBuilder ()
+utxoProducedTx :: Address -> P.Value -> Maybe (TxOutDatum Datum) -> TransactionBuilder ()
 utxoProducedTx addr val dat = do
     constr <- get
     let res = txConstructorResult constr
         c    = singleton (MustPayToAddress addr dat Nothing val)
     put constr { txConstructorResult = res <&&> Just (mempty, c) }
 
-utxoProducedPublicKeyTx :: PubKeyHash -> Maybe StakingCredential -> Value -> Maybe (TxOutDatum Datum) -> TransactionBuilder ()
+utxoProducedPublicKeyTx :: PubKeyHash -> Maybe StakingCredential -> P.Value -> Maybe (TxOutDatum Datum) -> TransactionBuilder ()
 utxoProducedPublicKeyTx pkh skc val dat =
     let addr = Address (PubKeyCredential pkh) skc
     in utxoProducedTx addr val dat
 
-utxoProducedScriptTx :: ValidatorHash -> Maybe StakingCredential -> Value -> TxOutDatum Datum -> TransactionBuilder ()
+utxoProducedScriptTx :: ValidatorHash -> Maybe StakingCredential -> P.Value -> TxOutDatum Datum -> TransactionBuilder ()
 utxoProducedScriptTx vh skc val dat =
     let addr = Address (ScriptCredential vh) skc
     in utxoProducedTx addr val (Just dat)
 
-tokensMintedTx :: ToData redeemer => Versioned MintingPolicy -> redeemer -> Value -> TransactionBuilder ()
+tokensMintedTx :: ToData redeemer => Versioned MintingPolicy -> redeemer -> P.Value -> TransactionBuilder ()
 tokensMintedTx mp red v = do
     constr <- get
     let res     = txConstructorResult constr
@@ -187,7 +197,7 @@ validatedInSlotIntervalTx startSlot endSlot = do
     let res  = txConstructorResult constr
     put constr { txConstructorResult = res <&&> Just (mempty, mustValidateInSlotRange $ interval startSlot endSlot) }
 
-postValidatorTx :: Address -> Versioned Validator -> Maybe (TxOutDatum Datum) -> Value -> TransactionBuilder ()
+postValidatorTx :: Address -> Versioned Validator -> Maybe (TxOutDatum Datum) -> P.Value -> TransactionBuilder ()
 postValidatorTx addr vld dat val = do
     constr <- get
     let res     = txConstructorResult constr
@@ -196,7 +206,7 @@ postValidatorTx addr vld dat val = do
         lookups = otherScript vld
     put constr { txConstructorResult = res <&&> Just (lookups, c)}
 
-postMintingPolicyTx :: Address -> Versioned MintingPolicy -> Maybe (TxOutDatum Datum) -> Value -> TransactionBuilder ()
+postMintingPolicyTx :: Address -> Versioned MintingPolicy -> Maybe (TxOutDatum Datum) -> P.Value -> TransactionBuilder ()
 postMintingPolicyTx addr mp dat val = do
     constr <- get
     let res     = txConstructorResult constr
