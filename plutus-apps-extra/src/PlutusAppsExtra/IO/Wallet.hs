@@ -69,7 +69,7 @@ import qualified Plutus.Script.Utils.Ada                            as Ada
 import qualified Plutus.Script.Utils.Ada                            as P
 import qualified Plutus.V2.Ledger.Api                               as P
 import           PlutusAppsExtra.Types.Error                        (ConnectionError, MkTxError (..), WalletError (..),
-                                                                     throwEither, throwMaybe)
+                                                                     throwEither, throwMaybe, mkUnbuildableUnbalancedTxError)
 import           PlutusAppsExtra.Utils.Address                      (addressToKeyHashes, bech32ToAddress)
 import           PlutusAppsExtra.Utils.ChainIndex                   (MapUTXO)
 import           PlutusAppsExtra.Utils.Servant                      (Endpoint, getFromEndpointOnPort,
@@ -206,12 +206,14 @@ balanceTx ::
     , FromData (DatumType a)
     , ToData (DatumType a)
     , ToData (RedeemerType a)
+    , Show (DatumType a)
+    , Show (RedeemerType a)
     ) =>
     Params -> ScriptLookups a -> TxConstraints (RedeemerType a) (DatumType a) -> m CardanoTx
 balanceTx params lookups cons = do
     walletId     <- getWalletId
-    unbalancedTx <- throwEither UnbuildableUnbalancedTx (mkTxWithParams params lookups cons)
-    exportTx     <- throwEither UnbuildableExportTx $ export params unbalancedTx
+    unbalancedTx <- throwEither (mkUnbuildableUnbalancedTxError lookups cons) (mkTxWithParams params lookups cons)
+    exportTx     <- throwEither (UnbuildableExportTx unbalancedTx) $ export params unbalancedTx
     asTx         <- getFromEndpointWallet $ Client.balanceTransaction Client.transactionClient
         (ApiT walletId)
         (toJSON exportTx)

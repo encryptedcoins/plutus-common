@@ -27,7 +27,7 @@ getProtocolParams fp networkId = do
 
 isOutOfResoursesError :: Either BalanceExternalTxError CardanoTx -> Bool
 isOutOfResoursesError = \case
-    Left (MakeAutoBalancedTxError (Left (Phase2, ScriptFailure (EvaluationError _ txt)))) -> msg `isInfixOf` txt
+    Left (MakeAutoBalancedTxError _ (Left (Phase2, ScriptFailure (EvaluationError _ txt)))) -> msg `isInfixOf` txt
     _ -> False
     where
         msg = "The machine terminated part way through evaluation due to overspending the budget."
