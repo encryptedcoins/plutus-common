@@ -19,7 +19,7 @@ import           Ledger.Tx.Constraints            (ScriptLookups (..), TxConstra
 import           Ledger.Index                     (UtxoIndex (..))
 import           Ledger.Tx.CardanoAPI             (toCardanoAddressInEra)
 import           Ledger.Typed.Scripts             (Any, ValidatorTypes (..))
-import           PlutusAppsExtra.Types.Error      (BalanceExternalTxError (..), throwEither)
+import           PlutusAppsExtra.Types.Error      (BalanceExternalTxError (..), throwEither, mkUnbalancedTxError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO, toCardanoUtxo)
 import           Prelude
 
@@ -31,15 +31,15 @@ balanceExternalTx :: (MonadThrow m)
                   -> TxConstraints (RedeemerType Any) (DatumType Any)
                   -> m CardanoTx
 balanceExternalTx params walletUTXO changeAddress lookups cons = do
-    UnbalancedCardanoTx cbt _ <- throwEither MakeUnbalancedTxError $ mkTxWithParams params lookups cons
+    unbalancedTx@(UnbalancedCardanoTx cbt _) <- throwEither (mkUnbalancedTxError lookups cons) $ mkTxWithParams params lookups cons
     utxoIndex                 <- UtxoIndex <$> toCardanoUtxo params (slTxOutputs lookups)
-    cAddress                  <- throwEither NonBabbageEraChangeAddress $ toCardanoAddressInEra (pNetworkId params) changeAddress
+    cAddress                  <- throwEither (NonBabbageEraChangeAddress changeAddress) $ toCardanoAddressInEra (pNetworkId params) changeAddress
     walletUTXOIndex           <- toCardanoUtxo params walletUTXO
-    let utxoProvider = either (throwM . MakeUtxoProviderError) pure . utxoProviderFromWalletOutputs walletUTXOIndex
+    let utxoProvider = either (throwM . MakeUtxoProviderError unbalancedTx) pure . utxoProviderFromWalletOutputs walletUTXOIndex
     (`CardanoTx` BabbageEraInCardanoMode) <$> makeAutoBalancedTransactionWithUtxoProvider
         params
         utxoIndex
         cAddress
         utxoProvider
-        (throwM . MakeAutoBalancedTxError)
+        (throwM . MakeAutoBalancedTxError unbalancedTx)
         cbt

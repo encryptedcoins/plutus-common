@@ -20,8 +20,10 @@ import           Control.Exception              (Exception)
 import           Control.Monad.Catch            (MonadThrow (..))
 import qualified Data.Aeson                     as J
 import           Data.Text                      (Text)
+import qualified Data.Text                      as T
 import           GHC.Generics                   (Generic)
 import           Ledger                         (Address, CardanoTx, DecoratedTxOut, ToCardanoError)
+import           Ledger.Tx.Constraints          (ScriptLookups (..), TxConstraints (..), UnbalancedTx)
 import           Network.HTTP.Client            (HttpExceptionContent, Request)
 import qualified Plutus.V2.Ledger.Api           as P
 import           Prelude
@@ -39,26 +41,32 @@ data TxBuilderError = TxBuilderError
     }
     deriving (Show, Exception, Eq, Generic, FromJSON, ToJSON)
 
-data MkTxError 
+data MkTxError
     = AllConstructorsFailed [TxBuilderError]
     | CantExtractHashFromCardanoTx CardanoTx
     | CantExtractKeyHashesFromAddress Address
-    -- | CantExtractTxOutRefsFromEmulatorTx
     | ConvertApiSerialisedTxToCardanoTxError ApiSerialisedTransaction
-    -- | ConvertCardanoTxToSealedTxError CardanoTx
     | NotEnoughFunds P.Value
     | UnbuildableTxOut DecoratedTxOut ToCardanoError
-    | UnbuildableExportTx
-    | UnbuildableUnbalancedTx
+    | UnbuildableExportTx UnbalancedTx
+    -- | UnbuildableUnbalancedTx has text representation of tx lookups and constraints because they dont have Eq and JSON instances.
+    | UnbuildableUnbalancedTx Text Text
     | UnparsableMetadata
     deriving (Show, Exception, Eq, Generic, FromJSON, ToJSON)
 
-data BalanceExternalTxError 
-    = MakeUnbalancedTxError
-    | NonBabbageEraChangeAddress
-    | MakeUtxoProviderError BalancingError
-    | MakeAutoBalancedTxError CardanoLedgerError
+mkUnbuildableUnbalancedTxError :: (Show c1, Show c2) => ScriptLookups l -> TxConstraints c1 c2 -> MkTxError
+mkUnbuildableUnbalancedTxError lookups cobns = UnbuildableUnbalancedTx (T.pack $ show lookups) (T.pack $ show cobns)
+
+data BalanceExternalTxError
+    -- | MakeUnbalancedTxError has text representation of tx lookups and constraints because they dont have Eq and JSON instances.
+    = MakeUnbalancedTxError      Text         Text
+    | NonBabbageEraChangeAddress Address
+    | MakeUtxoProviderError      UnbalancedTx BalancingError
+    | MakeAutoBalancedTxError    UnbalancedTx CardanoLedgerError
     deriving (Show, Exception, Eq, Generic, FromJSON, ToJSON)
+
+mkUnbalancedTxError :: (Show c1, Show c2) => ScriptLookups l -> TxConstraints c1 c2 -> BalanceExternalTxError
+mkUnbalancedTxError lookups cobns = MakeUnbalancedTxError (T.pack $ show lookups) (T.pack $ show cobns)
 
 data WalletError
     = RestoredWalletParsingError Text
@@ -77,7 +85,7 @@ data SubmitTxToLocalNodeError
     deriving (Show, Exception)
 
 throwMaybe :: (MonadThrow m, Exception e) => e -> Maybe a -> m a
-throwMaybe e = maybe (throwM e) pure 
+throwMaybe e = maybe (throwM e) pure
 
 throwEither :: (MonadThrow m, Exception e) => e -> Either b a -> m a
 throwEither e = either (const $ throwM e) pure

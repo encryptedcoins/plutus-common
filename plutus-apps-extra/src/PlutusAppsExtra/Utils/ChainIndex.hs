@@ -13,7 +13,7 @@ import           PlutusAppsExtra.Types.Error  (MkTxError (..))
 type MapUTXO = Map.Map TxOutRef DecoratedTxOut
 
 toCardanoUtxo :: (MonadThrow m) => Params -> MapUTXO -> m (Map.Map TxOutRef TxOut)
-toCardanoUtxo params utxos = 
+toCardanoUtxo params utxos =
     let f (a, b) = (a, ) <$> either (throwM . UnbuildableTxOut b) pure (toTxOut (pNetworkId params) b)
     in Map.fromList <$> mapM f (Map.toList  utxos)
 
