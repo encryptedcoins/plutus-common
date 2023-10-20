@@ -16,7 +16,7 @@ import           Cardano.Api                    (CardanoMode, FromJSON, NetworkM
 import           Cardano.Node.Emulator          (BalancingError, CardanoLedgerError)
 import           Cardano.Wallet.Api.Types       (ApiSerialisedTransaction)
 import           Cardano.Wallet.Primitive.Types (WalletId)
-import           Control.Exception              (Exception)
+import           Control.Exception              (Exception, IOException)
 import           Control.Monad.Catch            (MonadThrow (..))
 import qualified Data.Aeson                     as J
 import           Data.Text                      (Text)
@@ -81,7 +81,7 @@ data BlockfrostError
 
 data SubmitTxToLocalNodeError
     = FailedSumbit (TxValidationErrorInMode CardanoMode)
-    | NoConnectionToLocalNode
+    | NoConnectionToLocalNode IOException
     deriving (Show, Exception)
 
 throwMaybe :: (MonadThrow m, Exception e) => e -> Maybe a -> m a
