@@ -26,7 +26,7 @@ import           GHC.Generics                  (Generic)
 import           Ledger                        (Address (..), Datum (..), DatumFromQuery (..), DatumHash (..), Language (..),
                                                 NetworkId, Script, ScriptHash (..), Slot (Slot), TxId (..), TxOutRef (..),
                                                 Validator (..), ValidatorHash (..), Versioned (..), fromCardanoValue,
-                                                toCardanoValue)
+                                                toCardanoValue, adaOnlyValue)
 import           Plutus.Script.Utils.Ada       (lovelaceOf, toValue)
 import           Plutus.Script.Utils.Value     (AssetClass (..))
 import           Plutus.V1.Ledger.Api          (Credential (..), CurrencySymbol (..), StakingCredential (..), TokenName,
@@ -210,6 +210,9 @@ instance FromJSON (Kupo C.Value) where
                         cs'     <- CurrencySymbol <$> toBbs cs
                         pure [(cs', PMap.singleton "" amount')]
             toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex . T.pack
+
+filterCleanKupoResponses :: [KupoResponse] -> [KupoResponse]
+filterCleanKupoResponses = filter $ (\v -> adaOnlyValue v == v) . krValue
 
 -------------------------------------------- ToHttpApiData instances --------------------------------------------
 
