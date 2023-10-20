@@ -115,15 +115,15 @@ type family CreatedOrSpentSymbol cs where
 
 data KupoRequest (su :: SpentOrUnspent) (before :: CreatedOrSpent) (after :: CreatedOrSpent)
     = KupoRequest
-    { reqPattern              :: Pattern
-    , reqSpentOrUnspent       :: Bool
-    , reqOrder                :: Maybe KupoOrder
-    , reqCreatedOrSpentBefore :: Maybe Slot
-    , reqCreatedOrSpentAfter  :: Maybe Slot
-    , reqCurrencySymbol       :: Maybe CurrencySymbol
-    , reqTokenName            :: Maybe TokenName
-    , reqTxId                 :: Maybe TxId
-    , reqTxIdx                :: Maybe Integer
+    { reqPattern              :: !Pattern
+    , reqSpentOrUnspent       :: !Bool
+    , reqOrder                :: !(Maybe KupoOrder)
+    , reqCreatedOrSpentBefore :: !(Maybe Slot)
+    , reqCreatedOrSpentAfter  :: !(Maybe Slot)
+    , reqCurrencySymbol       :: !(Maybe CurrencySymbol)
+    , reqTokenName            :: !(Maybe TokenName)
+    , reqTxId                 :: !(Maybe TxId)
+    , reqTxIdx                :: !(Maybe Integer)
     } deriving (Show, Eq)
 
 instance Default (KupoRequest su before after) where
