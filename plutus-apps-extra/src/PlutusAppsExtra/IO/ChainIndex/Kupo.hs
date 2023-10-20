@@ -53,10 +53,11 @@ import           Servant.Client                   (client)
 
 -- Get all unspent utxos at a given address
 getUtxosAt :: Address -> IO MapUTXO
-getUtxosAt addr = getResponse >>= responseToUtxoMap
-    where
-        getResponse = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated
-            def {reqPattern = mkPattern addr, reqSpentOrUnspent = True}
+getUtxosAt addr = getKupoResponsesAt addr >>= responseToUtxoMap
+
+getKupoResponsesAt :: Address -> IO [KupoResponse]
+getKupoResponsesAt addr = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated
+    def {reqPattern = mkPattern addr, reqSpentOrUnspent = True}
 
 getUnspentTxOutFromRef :: TxOutRef -> IO (Maybe DecoratedTxOut)
 getUnspentTxOutFromRef = (getResponse . mkPattern) >=> fmap (join . listToMaybe) . mapM kupoResponseToDecoratedTxOut
