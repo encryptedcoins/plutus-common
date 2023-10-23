@@ -211,6 +211,26 @@ instance FromJSON (Kupo C.Value) where
                         pure [(cs', PMap.singleton "" amount')]
             toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex . T.pack
 
+data GetHealthResponse = GetHealthResponse
+    { ghrConnected            :: Bool
+    , ghrMostRecentCheckpoint :: Integer
+    , ghrMostRecentNodeTip    :: Integer
+    , ghrVersion              :: String
+    } deriving (Show, Generic)
+
+instance FromJSON GetHealthResponse where
+    parseJSON = withObject "GetHealthResponse" $ \o -> do
+        ghrConnected <- o .: "connection_status" >>= \case
+            J.String "connected"    -> pure True
+            J.String "disconnected" -> pure False
+            val                     -> fail $ show val
+        ghrMostRecentCheckpoint <- o .: "most_recent_checkpoint"
+        ghrMostRecentNodeTip    <- o .: "most_recent_node_tip"
+        ghrVersion              <- o .: "version"
+        pure GetHealthResponse{..}
+
+
+
 -------------------------------------------- ToHttpApiData instances --------------------------------------------
 
 instance ToHttpApiData Pattern where

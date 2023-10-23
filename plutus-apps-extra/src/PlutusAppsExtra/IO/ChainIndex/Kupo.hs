@@ -43,7 +43,7 @@ import qualified Plutus.V2.Ledger.Api             as P
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoOrder, KupoResponse (..), MkPattern (..), Pattern (..),
-                                                   fromKupoDatumType, kupoResponseToJSON)
+                                                   fromKupoDatumType, kupoResponseToJSON, GetHealthResponse)
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
 import qualified PlutusTx.AssocMap                as PAM
 import           Servant.API                      (Capture, Get, JSON, QueryFlag, QueryParam, (:>))
@@ -244,3 +244,8 @@ getFromEndpointKupo = getFromEndpointOnPort 1442
 
 pattern KupoConnectionError :: Request -> HttpExceptionContent -> ConnectionError
 pattern KupoConnectionError req content <- ConnectionErrorOnPort 1442 req content
+
+type GetHealth = "health" :> Get '[JSON] GetHealthResponse
+
+getHealth :: IO GetHealthResponse
+getHealth = getFromEndpointKupo $ client (Proxy @GetHealth)
