@@ -21,7 +21,7 @@ import           Cardano.Node.Emulator                              (Params)
 import qualified Cardano.Wallet.Api.Client                          as Client
 import           Cardano.Wallet.Api.Types                           (ApiSerialisedTransaction (..),
                                                                      ApiSignTransactionPostData (ApiSignTransactionPostData),
-                                                                     ApiT (..), ApiTxId (..), ApiWallet)
+                                                                     ApiT (..), ApiTxId (..), ApiWallet, ApiNetworkInformation)
 import           Cardano.Wallet.Api.Types.SchemaMetadata            (TxMetadataSchema (..))
 import           Cardano.Wallet.LocalClient.ExportTx                (export)
 import           Cardano.Wallet.Primitive.AddressDerivation         (WalletKey (digest, publicKey))
@@ -270,3 +270,8 @@ getWalletTxOutRefs params pkh mbSkc n = do
         cons    = case mbSkc of
             Just skc -> mconcat $ replicate n $ mustPayToPubKeyAddress (PaymentPubKeyHash pkh) skc $ Ada.lovelaceValueOf 10_000_000
             Nothing -> mustPayToPubKey (PaymentPubKeyHash pkh) $ Ada.lovelaceValueOf 10_000_000
+
+--------------------------------------------- Misc ---------------------------------------------
+
+getHealth :: MonadIO m => m ApiNetworkInformation
+getHealth = getFromEndpointWallet $ Client.networkInformation Client.networkClient
