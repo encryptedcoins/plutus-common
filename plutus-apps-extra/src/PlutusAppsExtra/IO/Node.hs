@@ -1,4 +1,5 @@
-{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE LambdaCase      #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module PlutusAppsExtra.IO.Node where
 
@@ -7,13 +8,27 @@ import           Cardano.Api.Shelley                                 (CardanoMod
                                                                       LocalNodeClientProtocols (..), LocalNodeConnectInfo (..),
                                                                       NetworkId, TxInMode (..), TxValidationErrorInMode,
                                                                       connectToLocalNode)
+import qualified Cardano.Node.Client                                 as CLient
 import           Control.Concurrent.STM                              (atomically, newEmptyTMVarIO, putTMVar, takeTMVar)
 import           Control.Monad.Catch                                 (Exception (fromException), handle, throwM)
 import           GHC.IO.Exception                                    (IOErrorType (NoSuchThing), IOException (..))
 import           Ledger.Tx                                           (CardanoTx (..))
+import           Network.HTTP.Client                                 (HttpExceptionContent, Request)
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Client (SubmitResult (..))
 import qualified Ouroboros.Network.Protocol.LocalTxSubmission.Client as Net.Tx
-import           PlutusAppsExtra.Types.Error                         (SubmitTxToLocalNodeError (..))
+import           PlutusAppsExtra.Types.Error                         (ConnectionError, SubmitTxToLocalNodeError (..))
+import           PlutusAppsExtra.Utils.Servant                       (Endpoint, getFromEndpointOnPort,
+                                                                      pattern ConnectionErrorOnPort)
+import qualified Servant.API                                         as Sevant
+
+healthCheck :: IO Sevant.NoContent
+healthCheck = getFromEndpointCardanoNode CLient.healthcheck
+
+getFromEndpointCardanoNode :: Endpoint a
+getFromEndpointCardanoNode = getFromEndpointOnPort 3003
+
+pattern CardanoNodeConnectionError :: Request -> HttpExceptionContent -> ConnectionError
+pattern CardanoNodeConnectionError req content <- ConnectionErrorOnPort 3003 req content
 
 sumbitTxToNodeLocal
     :: FilePath
