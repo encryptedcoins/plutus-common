@@ -53,10 +53,11 @@ import           Servant.Client                   (client)
 
 -- Get all unspent utxos at a given address
 getUtxosAt :: Address -> IO MapUTXO
-getUtxosAt addr = getResponse >>= responseToUtxoMap
-    where
-        getResponse = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated
-            def {reqPattern = mkPattern addr, reqSpentOrUnspent = True}
+getUtxosAt addr = getKupoResponsesAt addr >>= responseToUtxoMap
+
+getKupoResponsesAt :: Address -> IO [KupoResponse]
+getKupoResponsesAt addr = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated
+    def {reqPattern = mkPattern addr, reqSpentOrUnspent = True}
 
 getUnspentTxOutFromRef :: TxOutRef -> IO (Maybe DecoratedTxOut)
 getUnspentTxOutFromRef = (getResponse . mkPattern) >=> fmap (join . listToMaybe) . mapM kupoResponseToDecoratedTxOut
@@ -114,15 +115,15 @@ type family CreatedOrSpentSymbol cs where
 
 data KupoRequest (su :: SpentOrUnspent) (before :: CreatedOrSpent) (after :: CreatedOrSpent)
     = KupoRequest
-    { reqPattern              :: Pattern
-    , reqSpentOrUnspent       :: Bool
-    , reqOrder                :: Maybe KupoOrder
-    , reqCreatedOrSpentBefore :: Maybe Slot
-    , reqCreatedOrSpentAfter  :: Maybe Slot
-    , reqCurrencySymbol       :: Maybe CurrencySymbol
-    , reqTokenName            :: Maybe TokenName
-    , reqTxId                 :: Maybe TxId
-    , reqTxIdx                :: Maybe Integer
+    { reqPattern              :: !Pattern
+    , reqSpentOrUnspent       :: !Bool
+    , reqOrder                :: !(Maybe KupoOrder)
+    , reqCreatedOrSpentBefore :: !(Maybe Slot)
+    , reqCreatedOrSpentAfter  :: !(Maybe Slot)
+    , reqCurrencySymbol       :: !(Maybe CurrencySymbol)
+    , reqTokenName            :: !(Maybe TokenName)
+    , reqTxId                 :: !(Maybe TxId)
+    , reqTxIdx                :: !(Maybe Integer)
     } deriving (Show, Eq)
 
 instance Default (KupoRequest su before after) where
