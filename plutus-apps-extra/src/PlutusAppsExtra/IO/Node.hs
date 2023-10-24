@@ -54,7 +54,7 @@ sumbitTxToNodeLocal socketPath networkId (CardanoTx tx eraInMode) = handleConnec
 
 handleConnectionAbscence :: IO a -> IO a
 handleConnectionAbscence = handle $ \e -> case fromException e of
-    Just IOError{ioe_type = NoSuchThing} -> throwM NoConnectionToLocalNode
+    Just err@IOError{ioe_type = NoSuchThing} -> throwM $ NoConnectionToLocalNode err
     _ -> throwM e
 
 -- Node healthcheck returns ```InternalException Network.Socket.recvBuf: resource vanished (Connection reset by peer)```
