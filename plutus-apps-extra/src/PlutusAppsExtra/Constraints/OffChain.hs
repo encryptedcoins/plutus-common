@@ -36,7 +36,7 @@ import           Ledger.Tx.Constraints                  (TxConstraint (MustPayTo
 import           Ledger.Tx.Constraints.TxConstraints    (TxOutDatum, mustMintValueWithRedeemerAndReference, singleton)
 import           Ledger.Tx.Constraints.ValidityInterval (interval)
 import           PlutusAppsExtra.Types.Error            (TxBuilderError (..))
-import           PlutusAppsExtra.Types.Tx               (TransactionBuilder, TxConstructor (..), getBuilderResult)
+import           PlutusAppsExtra.Types.Tx               (TransactionBuilder, TxConstructor (..), getBuilderResult, requiresScript, requiresValidator)
 import           PlutusAppsExtra.Utils.ChainIndex       (filterPubKeyUtxos, filterScriptUtxos)
 
 (<&&>) :: (Semigroup a, Monad m) => m a -> m a -> m a
@@ -87,6 +87,8 @@ utxoSpentScriptTx f scriptVal red = utxoSpentScriptTx' f scriptVal red >>= failT
 utxoSpentScriptTx' :: ToData redeemer => (TxOutRef -> DecoratedTxOut -> Bool) -> (TxOutRef -> DecoratedTxOut -> Versioned Validator) ->
     (TxOutRef -> DecoratedTxOut -> redeemer) -> TransactionBuilder (Maybe (TxOutRef, DecoratedTxOut))
 utxoSpentScriptTx' f scriptVal red = do
+    requiresScript
+    requiresValidator
     constr <- get
     let utxos   = txConstructorLookups constr
         res     = txConstructorResult constr
@@ -173,6 +175,7 @@ utxoProducedScriptTx vh skc val dat =
 
 tokensMintedTx :: ToData redeemer => Versioned MintingPolicy -> redeemer -> P.Value -> TransactionBuilder ()
 tokensMintedTx mp red v = do
+    requiresScript
     constr <- get
     let res     = txConstructorResult constr
         -- Attempting to find a reference script
