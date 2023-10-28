@@ -94,15 +94,15 @@ instance MkPattern TxOutRef where
 ----------------------------------------------- FromJSON instances -----------------------------------------------
 
 data KupoResponse = KupoResponse
-    { krTxId :: TxId
+    { krTxId        :: TxId
     , krOutputIndex :: Integer
-    , krAddress :: Address
-    , krValue :: C.Value
-    , krDatumHash :: Maybe DatumHash
-    , krDatumType :: Maybe KupoDatumType
-    , krScriptHash :: Maybe ScriptHash
-    , krCreatedAt :: SlotWithHeaderHash
-    , krSpentAt :: Maybe SlotWithHeaderHash
+    , krAddress     :: Address
+    , krValue       :: C.Value
+    , krDatumHash   :: Maybe DatumHash
+    , krDatumType   :: Maybe KupoDatumType
+    , krScriptHash  :: Maybe ScriptHash
+    , krCreatedAt   :: SlotWithHeaderHash
+    , krSpentAt     :: Maybe SlotWithHeaderHash
     } deriving (Show, Eq, Generic)
 
 data KupoDatumType = KupoDatumHash | KupoDatumInline

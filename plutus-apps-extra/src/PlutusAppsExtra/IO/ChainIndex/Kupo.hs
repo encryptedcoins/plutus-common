@@ -1,47 +1,54 @@
-{-# LANGUAGE ConstraintKinds      #-}
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE NumericUnderscores   #-}
-{-# LANGUAGE PatternSynonyms      #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TupleSections        #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE ViewPatterns         #-}
+{-# LANGUAGE ConstraintKinds     #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE NumericUnderscores  #-}
+{-# LANGUAGE OverloadedLists     #-}
+{-# LANGUAGE PatternSynonyms     #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE ViewPatterns        #-}
+
 
 module PlutusAppsExtra.IO.ChainIndex.Kupo where
 
 import           Cardano.Api                      (NetworkId, writeFileJSON)
+import           Cardano.Wallet.Util              (modifyM)
 import           Control.Applicative              (Applicative (..))
 import           Control.Concurrent               (threadDelay)
 import           Control.Exception                (AsyncException (UserInterrupt), Exception (..), SomeException)
 import           Control.FromSum                  (eitherToMaybe)
-import           Control.Monad                    (forM, join, (>=>))
+import           Control.Lens                     ((&), (.~), (<&>), (^?))
+import           Control.Monad                    (forM, join, when, (>=>))
 import           Control.Monad.Catch              (MonadCatch, MonadThrow (throwM), handle, try)
 import           Control.Monad.IO.Class           (MonadIO (liftIO))
+import           Control.Monad.State.Strict       (StateT, execStateT)
 import           Data.Aeson                       (FromJSON (parseJSON), ToJSON, eitherDecodeFileStrict)
 import           Data.Aeson.Types                 (parseMaybe)
 import           Data.Data                        (Proxy (..))
 import           Data.Default                     (Default (def))
 import qualified Data.Map                         as Map
-import           Data.Maybe                       (catMaybes, fromMaybe, listToMaybe, mapMaybe)
+import           Data.Maybe                       (catMaybes, fromMaybe, listToMaybe)
+import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import           Data.Time                        (getCurrentTime)
 import           GHC.Base                         (coerce)
 import           GHC.TypeLits                     (AppendSymbol, KnownSymbol)
-import           Ledger                           (Address (..), Datum, DatumFromQuery (..), DatumHash, DecoratedTxOut (..),
+import           Ledger                           (Address (..), Datum (..), DatumFromQuery (..), DatumHash, DecoratedTxOut (..),
                                                    Script, ScriptHash, Slot (getSlot), TxId, TxOutRef (..), Validator,
-                                                   ValidatorHash, Versioned, fromCardanoValue, stakingCredential)
+                                                   ValidatorHash, Versioned, decoratedTxOutDatum, decoratedTxOutReferenceScript,
+                                                   decoratedTxOutValidator, decoratedTxOutValidatorHash, fromCardanoValue)
 import           Network.HTTP.Client              (HttpExceptionContent, Request)
-import           Plutus.V2.Ledger.Api             (Credential (..), CurrencySymbol, TokenName)
+import           Plutus.V2.Ledger.Api             (Credential (..), CurrencySymbol, ToData (..), TokenName)
 import qualified Plutus.V2.Ledger.Api             as P
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
+import           PlutusAppsExtra.Types.Tx         (UtxoRequirement (..), UtxoRequirements)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
+import qualified PlutusAppsExtra.Utils.Datum      as Datum
 import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoOrder, KupoResponse (..), MkPattern (..), Pattern (..),
                                                    fromKupoDatumType, kupoResponseToJSON)
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
@@ -52,20 +59,20 @@ import           Servant.Client                   (client)
 ----------------------------------------------------------- Hi-level API -----------------------------------------------------------
 
 -- Get all unspent utxos at a given address
-getUtxosAt :: Address -> IO MapUTXO
-getUtxosAt addr = getResponse >>= responseToUtxoMap
+getUtxosAt :: UtxoRequirements -> Address -> IO MapUTXO
+getUtxosAt reqs addr = getResponse >>= mkEvaluatedMapUtxo reqs
     where
         getResponse = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated
             def {reqPattern = mkPattern addr, reqSpentOrUnspent = True}
 
-getUnspentTxOutFromRef :: TxOutRef -> IO (Maybe DecoratedTxOut)
-getUnspentTxOutFromRef = (getResponse . mkPattern) >=> fmap (join . listToMaybe) . mapM kupoResponseToDecoratedTxOut
+getUnspentTxOutFromRef :: UtxoRequirements -> TxOutRef -> IO (Maybe DecoratedTxOut)
+getUnspentTxOutFromRef reqs = (getResponse . mkPattern) >=> fmap (join . listToMaybe) . mapM (mkEvaluatedDecoratedTxOut reqs)
     where
         getResponse pat = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated
             def {reqPattern = pat, reqSpentOrUnspent = True}
 
-getTxOutFromRef :: TxOutRef -> IO (Maybe DecoratedTxOut)
-getTxOutFromRef ref = getResponse >>= fmap (join . listToMaybe) . mapM kupoResponseToDecoratedTxOut
+getTxOutFromRef :: UtxoRequirements -> TxOutRef -> IO (Maybe DecoratedTxOut)
+getTxOutFromRef reqs ref = getResponse >>= fmap (join . listToMaybe) . mapM (mkEvaluatedDecoratedTxOut reqs)
     where
         getResponse = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated
             def {reqPattern = mkPattern ref}
@@ -77,7 +84,7 @@ getTokenBalanceToSlot cs tokenName slotTo addrPat = sum . fmap getAmount <$> lif
         getAmount KupoResponse{..} = fromMaybe 0 $ PAM.lookup cs (P.getValue $ fromCardanoValue krValue) >>= PAM.lookup tokenName
         getUnspent = getKupoResponse @'SUUnspent @'CSCreated @'CSCreated req
         getSpent   = case slotTo of
-            Just s -> getKupoResponse @'SUSpent   @'CSCreated @'CSSpent   req{reqCreatedOrSpentAfter = Just s}
+            Just s -> getKupoResponse @'SUSpent   @'CSCreated @'CSSpent req{reqCreatedOrSpentAfter = Just s}
             _      -> pure []
         req = def
             { reqPattern              = mkPattern addrPat
@@ -210,29 +217,52 @@ withResultSaving fp action = liftIO (try @_ @SomeException $ either error id <$>
 
 -------------------------------------------------------- Kupo response conversion --------------------------------------------------------
 
-responseToUtxoMap :: [KupoResponse] -> IO MapUTXO
-responseToUtxoMap responses = Map.fromList . mapMaybe sequence <$> mapM (\r -> (kupoResponseToTxOutRef r,) <$> kupoResponseToDecoratedTxOut r) responses
+mkEvaluatedMapUtxo :: UtxoRequirements -> [KupoResponse] -> IO MapUTXO
+mkEvaluatedMapUtxo reqs =
+    fmap (Map.fromList . catMaybes) . traverse (\r -> fmap (kupoResponseToTxOutRef r,) <$> mkEvaluatedDecoratedTxOut reqs r)
 
-kupoResponseToDecoratedTxOut :: KupoResponse -> IO (Maybe DecoratedTxOut)
-kupoResponseToDecoratedTxOut KupoResponse{..} = do
+mkEvaluatedDecoratedTxOut :: UtxoRequirements -> KupoResponse -> IO (Maybe DecoratedTxOut)
+mkEvaluatedDecoratedTxOut []   response                  = pure $ mkUnevaluatedDecoratedTxOut response
+mkEvaluatedDecoratedTxOut reqs response@KupoResponse{..} = sequence $ mkUnevaluatedDecoratedTxOut response <&> \txOut ->
+    flip execStateT txOut $ do
+        evaluateWhen RequiresDatum     evaluateDatum     $ liftA2 (,) (fst <$> txOut ^? decoratedTxOutDatum) krDatumType
+        evaluateWhen RequiresScript    evaluateScript      krScriptHash
+        evaluateWhen RequiresValidator evaluateValidator $ txOut ^? decoratedTxOutValidatorHash
+    where
+        evaluateWhen :: UtxoRequirement -> (v -> DecoratedTxOut -> IO DecoratedTxOut) -> Maybe v -> StateT DecoratedTxOut IO ()
+        evaluateWhen req f v = when (req `Set.member` reqs) $ maybe (pure ()) (modifyM . f) v
 
-    mbDat <- fmap join $ sequence $ getDatumByHash <$> krDatumHash
-    _decoratedTxOutReferenceScript <- fmap join $ sequence $ getScriptByHash <$> krScriptHash
-    let _decoratedTxOutValue = krValue
-    case addressCredential krAddress of
+        evaluateDatum (dh, datType) txOut = do
+            dat <- if dh == Datum.unitHash
+                   then pure $ Just $ Datum $ toBuiltinData ()
+                   else getDatumByHash dh
+            let dfq = maybe DatumUnknown (fromKupoDatumType datType) dat
+            pure $ txOut & decoratedTxOutDatum .~ (dh, dfq)
 
-        PubKeyCredential _decoratedTxOutPubKeyHash -> do
-            let _decoratedTxOutStakingCredential = addressStakingCredential krAddress
-                _decoratedTxOutPubKeyDatum = liftA2 (,) krDatumHash (liftA2 ($) (fromKupoDatumType <$> krDatumType) mbDat)
-            pure $ Just PublicKeyDecoratedTxOut{..}
+        evaluateScript sh txOut = do
+            script <- getScriptByHash sh
+            pure $ txOut & decoratedTxOutReferenceScript .~ script
 
+        evaluateValidator vh txOut = do
+            validator <- getValidatorByHash vh
+            pure $ txOut & decoratedTxOutValidator .~ validator
+
+mkUnevaluatedDecoratedTxOut :: KupoResponse -> Maybe DecoratedTxOut
+mkUnevaluatedDecoratedTxOut KupoResponse{..} =
+    let _decoratedTxOutStakingCredential = addressStakingCredential krAddress
+        _decoratedTxOutValue             = krValue
+        _decoratedTxOutPubKeyDatum       = dat
+        _decoratedTxOutReferenceScript   = Nothing
+        _decoratedTxOutValidator         = Nothing
+    in case addressCredential krAddress of
+        PubKeyCredential _decoratedTxOutPubKeyHash    -> pure PublicKeyDecoratedTxOut{..}
         ScriptCredential _decoratedTxOutValidatorHash -> do
-            let _decoratedTxOutStakingCredential = stakingCredential krAddress
-                dfq = fromMaybe DatumUnknown $ liftA2 ($) (fromKupoDatumType <$> krDatumType) mbDat
-            _decoratedTxOutValidator <- getValidatorByHash _decoratedTxOutValidatorHash
-            case krDatumHash of
-                Nothing -> pure Nothing
-                Just dh -> pure $ Just ScriptDecoratedTxOut{_decoratedTxOutScriptDatum = (dh, dfq), ..}
+            _decoratedTxOutScriptDatum <- _decoratedTxOutPubKeyDatum
+            pure ScriptDecoratedTxOut{..}
+    where
+        dat = if krDatumHash == Just Datum.unitHash
+              then fmap (Datum.unitHash,) $ fromKupoDatumType <$> krDatumType <*> Just (Datum $ toBuiltinData ())
+              else (, DatumUnknown) <$> krDatumHash
 
 kupoResponseToTxOutRef :: KupoResponse -> TxOutRef
 kupoResponseToTxOutRef KupoResponse{..} = TxOutRef krTxId krOutputIndex
