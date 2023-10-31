@@ -87,8 +87,6 @@ utxoSpentScriptTx f scriptVal red = utxoSpentScriptTx' f scriptVal red >>= failT
 utxoSpentScriptTx' :: ToData redeemer => (TxOutRef -> DecoratedTxOut -> Bool) -> (TxOutRef -> DecoratedTxOut -> Versioned Validator) ->
     (TxOutRef -> DecoratedTxOut -> redeemer) -> TransactionBuilder (Maybe (TxOutRef, DecoratedTxOut))
 utxoSpentScriptTx' f scriptVal red = do
-    requiresScript
-    requiresValidator
     constr <- get
     let utxos   = txConstructorLookups constr
         res     = txConstructorResult constr
@@ -175,7 +173,6 @@ utxoProducedScriptTx vh skc val dat =
 
 tokensMintedTx :: ToData redeemer => Versioned MintingPolicy -> redeemer -> P.Value -> TransactionBuilder ()
 tokensMintedTx mp red v = do
-    requiresScript
     constr <- get
     let res     = txConstructorResult constr
         -- Attempting to find a reference script
