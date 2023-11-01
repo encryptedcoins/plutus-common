@@ -36,7 +36,7 @@ import           Ledger.Tx.Constraints                  (TxConstraint (MustPayTo
 import           Ledger.Tx.Constraints.TxConstraints    (TxOutDatum, mustMintValueWithRedeemerAndReference, singleton)
 import           Ledger.Tx.Constraints.ValidityInterval (interval)
 import           PlutusAppsExtra.Types.Error            (TxBuilderError (..))
-import           PlutusAppsExtra.Types.Tx               (TransactionBuilder, TxConstructor (..), getBuilderResult, requiresScript, requiresValidator)
+import           PlutusAppsExtra.Types.Tx               (TransactionBuilder, TxConstructor (..), getBuilderResult)
 import           PlutusAppsExtra.Utils.ChainIndex       (filterPubKeyUtxos, filterScriptUtxos)
 
 (<&&>) :: (Semigroup a, Monad m) => m a -> m a -> m a

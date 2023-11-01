@@ -50,8 +50,8 @@ data MkTxError
     | NotEnoughFunds P.Value
     | UnbuildableTxOut DecoratedTxOut ToCardanoError
     | UnbuildableExportTx UnbalancedTx
-    -- | UnbuildableUnbalancedTx has text representation of tx lookups and constraints because they dont have Eq and JSON instances.
     | UnbuildableUnbalancedTx Text Text
+    -- ^ UnbuildableUnbalancedTx has text representation of tx lookups and constraints because they dont have Eq and JSON instances.
     | UnparsableMetadata
     deriving (Show, Exception, Eq, Generic, FromJSON, ToJSON)
 
@@ -59,8 +59,8 @@ mkUnbuildableUnbalancedTxError :: (Show c1, Show c2) => ScriptLookups l -> TxCon
 mkUnbuildableUnbalancedTxError lookups cons = UnbuildableUnbalancedTx (T.pack $ show lookups) (T.pack $ show cons)
 
 data BalanceExternalTxError
-    -- | MakeUnbalancedTxError has text representation of tx lookups and constraints because they dont have Eq and JSON instances.
     = MakeUnbalancedTxError      Ledger.MkTxError Text Text
+    -- ^ MakeUnbalancedTxError has text representation of tx lookups and constraints because they dont have Eq and JSON instances.
     | NonBabbageEraChangeAddress Address
     | MakeUtxoProviderError      UnbalancedTx BalancingError
     | MakeAutoBalancedTxError    UnbalancedTx CardanoLedgerError
