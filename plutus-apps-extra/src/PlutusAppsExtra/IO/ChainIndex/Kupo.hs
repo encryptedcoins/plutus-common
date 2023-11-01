@@ -16,16 +16,14 @@
 module PlutusAppsExtra.IO.ChainIndex.Kupo where
 
 import           Cardano.Api                      (NetworkId, writeFileJSON)
-import           Cardano.Wallet.Util              (modifyM)
 import           Control.Applicative              (Applicative (..))
 import           Control.Concurrent               (threadDelay)
 import           Control.Exception                (AsyncException (UserInterrupt), Exception (..), SomeException)
 import           Control.FromSum                  (eitherToMaybe)
-import           Control.Lens                     ((&), (.~), (<&>), (^?))
-import           Control.Monad                    (forM, join, when, (>=>))
+import           Control.Lens                     ((.~), (^?))
+import           Control.Monad                    (forM, join, (>=>))
 import           Control.Monad.Catch              (MonadCatch, MonadThrow (throwM), handle, try)
 import           Control.Monad.IO.Class           (MonadIO (liftIO))
-import           Control.Monad.State.Strict       (StateT, execStateT)
 import           Data.Aeson                       (FromJSON (parseJSON), ToJSON, eitherDecodeFileStrict)
 import           Data.Aeson.Types                 (parseMaybe)
 import           Data.Data                        (Proxy (..))
@@ -49,8 +47,8 @@ import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Types.Tx         (UtxoRequirement (..), UtxoRequirements)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import qualified PlutusAppsExtra.Utils.Datum      as Datum
-import           PlutusAppsExtra.Utils.Kupo       (Kupo (..), KupoOrder, KupoResponse (..), MkPattern (..), Pattern (..),
-                                                   fromKupoDatumType, kupoResponseToJSON, GetHealthResponse)
+import           PlutusAppsExtra.Utils.Kupo       (GetHealthResponse, Kupo (..), KupoOrder, KupoResponse (..), MkPattern (..),
+                                                   Pattern (..), fromKupoDatumType, kupoResponseToJSON)
 import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
 import qualified PlutusTx.AssocMap                as PAM
 import           Servant.API                      (Capture, Get, JSON, QueryFlag, QueryParam, (:>))
@@ -222,30 +220,33 @@ mkEvaluatedMapUtxo reqs =
     fmap (Map.fromList . catMaybes) . traverse (\r -> fmap (kupoResponseToTxOutRef r,) <$> mkEvaluatedDecoratedTxOut reqs r)
 
 mkEvaluatedDecoratedTxOut :: UtxoRequirements -> KupoResponse -> IO (Maybe DecoratedTxOut)
-mkEvaluatedDecoratedTxOut []   response                  = pure $ mkUnevaluatedDecoratedTxOut response
-mkEvaluatedDecoratedTxOut reqs response@KupoResponse{..} = sequence $ mkUnevaluatedDecoratedTxOut response <&> \txOut ->
-    flip execStateT txOut $ do
-        evaluateWhen RequiresDatum     evaluateDatum     $ liftA2 (,) (fst <$> txOut ^? decoratedTxOutDatum) krDatumType
-        evaluateWhen RequiresScript    evaluateScript      krScriptHash
-        evaluateWhen RequiresValidator evaluateValidator $ txOut ^? decoratedTxOutValidatorHash
+mkEvaluatedDecoratedTxOut reqs KupoResponse{..} = sequence $ go <$> mkUnevaluatedDecoratedTxOut KupoResponse{..}
     where
-        evaluateWhen :: UtxoRequirement -> (v -> DecoratedTxOut -> IO DecoratedTxOut) -> Maybe v -> StateT DecoratedTxOut IO ()
-        evaluateWhen req f v = when (req `Set.member` reqs) $ maybe (pure ()) (modifyM . f) v
+        go txOut = do
+            fd <- evaluateWhen RequiresDatum     evaluateDatum     $ liftA2 (,) (fst <$> txOut ^? decoratedTxOutDatum) krDatumType
+            fs <- evaluateWhen RequiresScript    evaluateScript      krScriptHash
+            fv <- evaluateWhen RequiresValidator evaluateValidator $ txOut ^? decoratedTxOutValidatorHash
+            pure $ fd . fs . fv $ txOut
 
-        evaluateDatum (dh, datType) txOut = do
+        evaluateWhen :: UtxoRequirement -> (v -> IO (DecoratedTxOut -> DecoratedTxOut)) -> Maybe v -> IO (DecoratedTxOut -> DecoratedTxOut)
+        evaluateWhen req f mbV = case (req `Set.member` reqs, mbV) of
+            (True, Just v) -> f v
+            _              -> pure id
+
+        evaluateDatum (dh, datType) = do
             dat <- if dh == Datum.unitHash
                    then pure $ Just $ Datum $ toBuiltinData ()
                    else getDatumByHash dh
             let dfq = maybe DatumUnknown (fromKupoDatumType datType) dat
-            pure $ txOut & decoratedTxOutDatum .~ (dh, dfq)
+            pure (decoratedTxOutDatum .~ (dh, dfq))
 
-        evaluateScript sh txOut = do
+        evaluateScript sh = do
             script <- getScriptByHash sh
-            pure $ txOut & decoratedTxOutReferenceScript .~ script
+            pure (decoratedTxOutReferenceScript .~ script)
 
-        evaluateValidator vh txOut = do
+        evaluateValidator vh = do
             validator <- getValidatorByHash vh
-            pure $ txOut & decoratedTxOutValidator .~ validator
+            pure (decoratedTxOutValidator .~ validator)
 
 mkUnevaluatedDecoratedTxOut :: KupoResponse -> Maybe DecoratedTxOut
 mkUnevaluatedDecoratedTxOut KupoResponse{..} =
