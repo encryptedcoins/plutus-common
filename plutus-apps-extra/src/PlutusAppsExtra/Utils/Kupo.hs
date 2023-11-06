@@ -215,7 +215,6 @@ data GetHealthResponse = GetHealthResponse
     { ghrConnected            :: Bool
     , ghrMostRecentCheckpoint :: Integer
     , ghrMostRecentNodeTip    :: Integer
-    , ghrVersion              :: String
     } deriving (Show, Generic)
 
 instance FromJSON GetHealthResponse where
@@ -226,9 +225,7 @@ instance FromJSON GetHealthResponse where
             val                     -> fail $ show val
         ghrMostRecentCheckpoint <- o .: "most_recent_checkpoint"
         ghrMostRecentNodeTip    <- o .: "most_recent_node_tip"
-        ghrVersion              <- o .: "version"
         pure GetHealthResponse{..}
-
 
 filterCleanKupoResponses :: [KupoResponse] -> [KupoResponse]
 filterCleanKupoResponses = filter $ (\v -> adaOnlyValue v == v) . krValue
