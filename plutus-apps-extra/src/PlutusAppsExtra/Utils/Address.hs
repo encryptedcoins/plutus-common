@@ -10,8 +10,8 @@
 
 module PlutusAppsExtra.Utils.Address where
 
-import           Cardano.Api.Shelley          (AsType (..), NetworkId, SerialiseAddress (..), ShelleyEra, StakeAddress (..),
-                                               StakeCredential (..), byronAddressInEra, shelleyAddressInEra)
+import           Cardano.Api.Shelley          (AsType (..), NetworkId (..), SerialiseAddress (..), ShelleyEra, StakeAddress (..),
+                                               StakeCredential (..), byronAddressInEra, shelleyAddressInEra, makeStakeAddress)
 import           Cardano.Ledger.Alonzo.TxInfo (transKeyHash)
 import qualified Cardano.Ledger.Credential    as Shelley
 import           Data.Either.Extra            (eitherToMaybe)
@@ -71,5 +71,9 @@ bech32ToStakePubKeyHash txt = do
 ------------------------------------- Other conversions -------------------------------------------
 
 spkhToStakeCredential :: StakePubKeyHash -> Maybe StakeCredential
-spkhToStakeCredential (StakePubKeyHash (PubKeyHash bbs)) = fmap StakeCredentialByKey 
+spkhToStakeCredential (StakePubKeyHash (PubKeyHash bbs)) = fmap StakeCredentialByKey
     $ eitherToMaybe $ deserialiseFromRawBytes (AsHash AsStakeKey) $ fromBuiltin bbs
+
+stakeKeyToStakeAddress :: NetworkId -> PubKeyHash -> Maybe StakeAddress
+stakeKeyToStakeAddress networkId (PubKeyHash h) = eitherToMaybe $ makeStakeAddress networkId . StakeCredentialByKey
+    <$> deserialiseFromRawBytes (AsHash AsStakeKey) (fromBuiltin h)

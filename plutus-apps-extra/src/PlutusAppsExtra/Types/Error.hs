@@ -76,8 +76,9 @@ data WalletError
     | AddressDoesntCorrespondToPubKey Address
     deriving (Show, Exception)
 
-data BlockfrostError
-    = UnknownNetworkMagic NetworkMagic
+data ExternalServiceError
+    = BlockfrostUnknownNetworkMagic NetworkMagic
+    | MaestroUnknownNetworkMagic NetworkMagic
     deriving (Show, Exception)
 
 data SubmitTxToLocalNodeError

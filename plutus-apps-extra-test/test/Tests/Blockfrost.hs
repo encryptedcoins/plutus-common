@@ -5,7 +5,7 @@
 module Tests.Blockfrost where
 
 import           Cardano.Api                   (AsType (..), Hash, NetworkId (..), NetworkMagic (..), SerialiseAsRawBytes (..),
-                                                StakeAddress (..), StakeKey, TxId, deserialiseFromBech32)
+                                                StakeAddress (..), StakeKey, deserialiseFromBech32)
 import           Cardano.Api.Shelley           (PoolId, StakeAddress (..), StakeCredential (..))
 import           Cardano.Ledger.Alonzo.TxInfo  (transKeyHash)
 import qualified Cardano.Ledger.Credential     as Cred
@@ -15,20 +15,21 @@ import           Data.Maybe                    (fromJust)
 import           Data.String                   (fromString)
 import           Data.Text                     (Text)
 import           Ledger                        (Address, MintingPolicyHash (..), PubKeyHash (..),
-                                                StakePubKeyHash (StakePubKeyHash), stakePubKeyHashCredential, stakingCredential)
+                                                StakePubKeyHash (StakePubKeyHash), TxId, stakePubKeyHashCredential,
+                                                stakingCredential)
 import           Plutus.V1.Ledger.Api          (CurrencySymbol (..), fromBuiltin, toBuiltin)
 import           PlutusAppsExtra.IO.Blockfrost (getAddressFromStakePubKeyHash, verifyAsset)
 import           PlutusAppsExtra.Utils.Address (bech32ToAddress, bech32ToStakeAddress)
 import qualified Text.Hex                      as T
 
 toStake :: Text -> StakeAddress
-toStake = fromJust . bech32ToStakeAddress 
+toStake = fromJust . bech32ToStakeAddress
 
 toPool :: Text -> PoolId
 toPool txt = let Right pool = deserialiseFromBech32 (AsHash AsStakePoolKey) txt in pool
 
 toAddr :: Text -> Address
-toAddr =  fromJust . bech32ToAddress 
+toAddr =  fromJust . bech32ToAddress
 
 stake1, stake2 :: StakeAddress
 stake1 = toStake "stake_test1uqxnjdhxpt0p22qzu34jk7f9wdj4mxgvddafr65dttmj2scltfs6h"
@@ -50,7 +51,7 @@ getAddress :: StakeAddress -> PoolId -> Address -> IO ()
 getAddress (StakeAddress _ s@(Cred.KeyHashObj hash)) pool addr
     = getAddressFromStakePubKeyHash (Testnet $ NetworkMagic 2) pool (stakeCredToSpkh s) >>= \case
         Just addr' -> if addr == addr' then print True else failedTest addr addr'
-    where 
+    where
         failedTest a a' = print $ "expected:" <> show a <> " got: " <> show a'
 
 stakeCredToSpkh :: Cred.StakeCredential StandardCrypto -> StakePubKeyHash
@@ -61,5 +62,5 @@ verifyAssetTest = verifyAsset
     (Testnet $ NetworkMagic 2)
     (CurrencySymbol $ toBuiltin $ fromJust $ T.decodeHex "4cd1187e477d56e419c354f1e4c7997a736dfc5e095a2511aba0f75d")
     ""
-    1 
+    1
     (toAddr "addr_test1qznvz33axk8zxup2e2wgt7zr0398r3x8uup5xf8ljddreqpu9sytuyrjjxlg6udmkvk6z8emjasmpxgl9fhkjs857wgqrfjuwn")
