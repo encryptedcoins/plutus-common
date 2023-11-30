@@ -28,7 +28,7 @@ import qualified Servant.Client                as Servant
 import qualified Data.ByteString as BS
 
 type GetAccountAddressesHoldingAssets = ApiPrefix :> Auth :>
-    "assets" :> Capture "Asset" (Maestro AssetClass) :> "accounts" :>  QueryParam "Cursor" Cursor :> Get '[JSON] AccountAddressesHoldingAssetsResponse
+    "assets" :> Capture "Asset" (Maestro AssetClass) :> "accounts" :>  QueryParam "cursor" Cursor :> Get '[JSON] AccountAddressesHoldingAssetsResponse
 
 getAccountAddressesHoldingAssets :: NetworkId -> CurrencySymbol -> TokenName -> Maybe Cursor -> IO AccountAddressesHoldingAssetsResponse
 getAccountAddressesHoldingAssets network cs name cursor = getFromEndpointMaestro network $ withMaestroToken $ \t ->

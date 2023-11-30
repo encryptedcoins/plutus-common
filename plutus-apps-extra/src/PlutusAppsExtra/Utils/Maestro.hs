@@ -47,7 +47,7 @@ data AccountAddressesHoldingAssetsResponse = AccountAddressesHoldingAssetsRespon
 
 instance FromJSON AccountAddressesHoldingAssetsResponse where
     parseJSON = withObject "TxDetailsResponse" $ \o -> do
-        aaharCursor <- o .:? "cursor"
+        aaharCursor <- o .:? "next_cursor"
         d           <- o .:  "data"
         aaharData   <- fmap catMaybes $ forM d $ \a -> do
             stakeAddr <- a .: "account" <&> fmap unStakePubKeyHash . bech32ToStakePubKeyHash

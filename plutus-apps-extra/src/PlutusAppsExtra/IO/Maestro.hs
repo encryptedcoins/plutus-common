@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RecordWildCards  #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module PlutusAppsExtra.IO.Maestro where
 
@@ -25,4 +25,6 @@ foldPages f = go $ f Nothing
     where
         go getRes = do
             res <- getRes
-            maybe (pure [res]) (fmap (res :) . go . f . Just) $ getCursor res
+            case getCursor res of
+                Nothing -> pure [res]
+                Just s -> (res :) <$> go (f $ Just s)
