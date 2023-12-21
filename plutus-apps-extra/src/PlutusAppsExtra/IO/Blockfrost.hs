@@ -1,6 +1,9 @@
-{-# LANGUAGE MultiWayIf      #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ViewPatterns    #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE ViewPatterns      #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant <&>" #-}
 
 module PlutusAppsExtra.IO.Blockfrost where
 
@@ -12,6 +15,7 @@ import           Control.Lens.Tuple               (Field3 (_3))
 import           Control.Monad                    (foldM)
 import           Control.Monad.IO.Class           (MonadIO (..))
 import           Control.Monad.Trans.Maybe        (MaybeT (..))
+import           Data.Either                      (isRight, rights)
 import           Data.Foldable                    (find)
 import           Data.Functor                     ((<&>))
 import           Data.List                        (intersect, (\\))
@@ -19,7 +23,7 @@ import qualified Data.Map                         as Map
 import           Data.Maybe                       (fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set                         as Set
 import           Ledger                           (Address (..), Datum (..), DatumFromQuery (..), DatumHash, DecoratedTxOut (..),
-                                                   Script, ScriptHash, StakePubKeyHash (..), TxId, TxOutRef (..), Validator,
+                                                   Script, ScriptHash, StakePubKeyHash (..), TxId (..), TxOutRef (..), Validator,
                                                    ValidatorHash, Versioned, decoratedTxOutDatum, decoratedTxOutReferenceScript,
                                                    decoratedTxOutValidator, decoratedTxOutValidatorHash, fromCardanoValue)
 import           Plutus.Script.Utils.Value        (CurrencySymbol, TokenName)
@@ -28,8 +32,9 @@ import qualified Plutus.V1.Ledger.Value           as P
 import qualified PlutusAppsExtra.Api.Blockfrost   as Api
 import           PlutusAppsExtra.Types.Tx         (UtxoRequirement (..), UtxoRequirements)
 import           PlutusAppsExtra.Utils.Address    (bech32ToAddress, spkhToStakeCredential)
-import           PlutusAppsExtra.Utils.Blockfrost (AccDelegationHistoryResponse (..), AssetTxsResponse (..), BfOrder (..),
-                                                   TxUtxoResponse (..), TxUtxoResponseInput (..), TxUtxoResponseOutput (..), AssetAddressesResponse (..))
+import           PlutusAppsExtra.Utils.Blockfrost (AccDelegationHistoryResponse (..), AssetAddressesResponse (..),
+                                                   AssetTxsResponse (..), BfOrder (..), TxUtxoResponse (..),
+                                                   TxUtxoResponseInput (..), TxUtxoResponseOutput (..))
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import           PlutusAppsExtra.Utils.Datum      (hashDatum)
 import qualified PlutusAppsExtra.Utils.Datum      as Datum
@@ -81,15 +86,28 @@ getValidatorByHash network = handle404Maybe . Api.getValidatorByHashUnsafe netwo
 -- If txId is passed as the last argument - function will stop after ecnountering this txId
 -- This function is useful when you need to iteratively monitor txs related to specific asset
 getAllAssetTxsAfterTxId :: NetworkId -> CurrencySymbol -> TokenName -> Maybe TxId -> IO [TxId]
-getAllAssetTxsAfterTxId network cs name mbTxId = map atrTxHash <$> case mbTxId of
-        Nothing   -> foldPages $ Api.getAssetTxs network cs name (Just Desc)
-        Just txId -> go txId 1
+getAllAssetTxsAfterTxId network cs name mbTxId = takeAssetTxsWhile network cs name (Just Desc) pure predicate
     where
-        go txId page = do
-            txs <- Api.getAssetTxs network cs name (Just Desc) page
-            if  | null txs                      -> pure []
-                | txId `elem` map atrTxHash txs -> pure $ takeWhile ((/= txId) . atrTxHash) txs
-                | otherwise                     -> (txs <>) <$> go txId (page + 1)
+        predicate txId = if Just txId == mbTxId then Left txId else Right txId
+
+-- Apply function to txId list to get txs while predicate(either) holds
+takeAssetTxsWhile ::  NetworkId -> CurrencySymbol -> TokenName -> Maybe BfOrder -> (TxId -> IO a) -> (a -> Either l r) -> IO [r]
+takeAssetTxsWhile network cs name mbOrder getTxInfo predicate = rights <$> takeAssetTxsWhileWithResult network cs name mbOrder getTxInfo predicate
+
+-- Apply function to txId list to get txs while predicate(either) holds, with save of first failed result
+takeAssetTxsWhileWithResult :: NetworkId -> CurrencySymbol -> TokenName -> Maybe BfOrder -> (TxId -> IO a) -> (a -> Either l r) -> IO [Either l r]
+takeAssetTxsWhileWithResult network cs name mbOrder getTxInfo predicate = concat <$> foldPagesWhile 1
+    where
+        foldPagesWhile page = Api.getAssetTxs network cs name mbOrder page >>= \case
+            [] -> pure []
+            txs -> checkTxsWhile (atrTxHash <$> txs) >>= \case
+                [] -> pure []
+                is -> if all isRight is then (is :) <$> foldPagesWhile (page + 1) else pure [is]
+        checkTxsWhile = \case
+            []     -> pure []
+            i:is -> getTxInfo i <&> predicate >>= \case
+                Right r -> (Right r :) <$> checkTxsWhile is
+                Left  l -> pure [Left l]
 
 --------------------------------------------------- Encoins distribution  ---------------------------------------------------
 
