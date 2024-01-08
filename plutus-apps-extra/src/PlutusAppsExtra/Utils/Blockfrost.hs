@@ -152,7 +152,7 @@ data AssetHistoryResponse = AssetHistoryResponse
 
 instance FromJSON AssetHistoryResponse where
     parseJSON = withObject "Asset history response" $ \o -> do
-        ahrTxHash          <- o .: "tx_hash"
+        ahrTxHash          <- o .: "tx_hash" <&> TxId
         ahrMintingPolarity <- o .: "action"
         ahrAmount          <- o .: "amount" >>= maybe mzero pure . readMaybe . T.unpack
         pure AssetHistoryResponse{..}

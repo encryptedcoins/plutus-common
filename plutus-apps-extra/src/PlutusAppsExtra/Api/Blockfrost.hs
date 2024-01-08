@@ -57,11 +57,11 @@ getAssetTxs network cs name order page = getFromEndpointBF network $ withBfToken
     client (Proxy @GetAssetTxs) t (Bf $ AssetClass (cs, name)) order (Just page)
 
 type GetAssetHistory = ApiPrefix :> Auth :>
-    "assets" :> Capture "Policy id" (Bf AssetClass) :> "history" :> Get '[JSON] [AssetHistoryResponse]
+    "assets" :> Capture "Policy id" (Bf AssetClass) :> "history" :> QueryParam "order" BfOrder :> QueryParam "page" Int :> Get '[JSON] [AssetHistoryResponse]
 
-getAssetHistory :: NetworkId -> CurrencySymbol -> TokenName -> IO [AssetHistoryResponse]
-getAssetHistory network cs name = getFromEndpointBF network $ withBfToken $ \t ->
-    client (Proxy @GetAssetHistory) t (Bf $ AssetClass (cs, name))
+getAssetHistory :: NetworkId -> CurrencySymbol -> TokenName -> Maybe BfOrder -> Int -> IO [AssetHistoryResponse]
+getAssetHistory network cs name order page = getFromEndpointBF network $ withBfToken $ \t ->
+    client (Proxy @GetAssetHistory) t (Bf $ AssetClass (cs, name)) order (Just page)
 
 type GetAccountAssociatedAddresses = ApiPrefix :> Auth :>
     "accounts" :> Capture "Stake address" (Bf StakeAddress) :> "addresses" :> QueryParam "page" Int :> QueryParam "order" BfOrder :> Get '[JSON] [Text]

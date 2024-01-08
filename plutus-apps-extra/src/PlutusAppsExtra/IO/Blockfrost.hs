@@ -34,7 +34,7 @@ import           PlutusAppsExtra.Types.Tx         (UtxoRequirement (..), UtxoReq
 import           PlutusAppsExtra.Utils.Address    (bech32ToAddress, spkhToStakeCredential)
 import           PlutusAppsExtra.Utils.Blockfrost (AccDelegationHistoryResponse (..), AssetAddressesResponse (..),
                                                    AssetTxsResponse (..), BfOrder (..), TxUtxoResponse (..),
-                                                   TxUtxoResponseInput (..), TxUtxoResponseOutput (..))
+                                                   TxUtxoResponseInput (..), TxUtxoResponseOutput (..), AssetHistoryResponse)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import           PlutusAppsExtra.Utils.Datum      (hashDatum)
 import qualified PlutusAppsExtra.Utils.Datum      as Datum
@@ -64,6 +64,9 @@ getAccountAssociatedAddresses network spkh = case makeStakeAddress network <$> s
 getAssetAddressess :: NetworkId -> CurrencySymbol -> TokenName -> IO [(Address, Integer)]
 getAssetAddressess network cs name = fmap (map $ \AssetAddressesResponse{..} -> (adrAddress, adrQuantity))
     $ foldPages $ Api.getAssetAddresses network cs name Nothing
+
+getAssetHistory :: NetworkId -> CurrencySymbol -> TokenName -> IO [AssetHistoryResponse]
+getAssetHistory network cs name = foldPages $ Api.getAssetHistory network cs name Nothing
 
 getAssetTxs :: NetworkId -> CurrencySymbol -> TokenName -> IO [AssetTxsResponse]
 getAssetTxs network cs name = foldPages $ Api.getAssetTxs network cs name Nothing
