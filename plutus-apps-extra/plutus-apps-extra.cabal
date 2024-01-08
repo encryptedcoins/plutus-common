@@ -118,7 +118,6 @@ library
       plutus-tx-constraints                  -any,
       plutus-tx-extra                        -any,
       plutus-tx-plugin                       -any,
-      plutus-use-cases                       -any,
       purescript-bridge                      -any,
       random                                 -any,
       req                                    -any,
