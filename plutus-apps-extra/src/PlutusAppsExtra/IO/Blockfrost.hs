@@ -74,6 +74,8 @@ getAssetTxs network cs name = foldPages $ Api.getAssetTxs network cs name Nothin
 getTxUtxo :: NetworkId -> UtxoRequirements -> TxId -> IO MapUTXO
 getTxUtxo network reqs txId = Api.getTxUtxo network txId >>= mkEvaluatedMapUtxo network reqs
 
+-------------------------------------------------------- Get by hash  --------------------------------------------------------
+
 getDatumByHash :: NetworkId -> DatumHash -> IO (Maybe Datum)
 getDatumByHash network = handle404Maybe . Api.getDatumByHashUnsafe network
 

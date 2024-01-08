@@ -19,6 +19,7 @@ import qualified Data.Aeson                    as J
 import           Data.Coerce                   (coerce)
 import           Data.Functor                  ((<&>))
 import           Data.Maybe                    (catMaybes)
+import qualified Data.Time                     as Time
 import           GHC.Records                   (HasField (..))
 import           Ledger                        (Address, Datum (..), DatumFromQuery (..), DatumHash, PubKeyHash (..), Slot (..),
                                                 StakePubKeyHash (..), TxId (..))
@@ -28,6 +29,7 @@ import           PlutusAppsExtra.Utils.Address (bech32ToAddress, bech32ToStakePu
 import           Servant.API                   (ToHttpApiData (..))
 import           Text.Hex                      (decodeHex, encodeHex)
 import qualified Text.Hex                      as T
+import           Text.Read                     (readMaybe)
 
 newtype Maestro a = Maestro {getMaestro :: a}
 
@@ -57,6 +59,35 @@ instance FromJSON AccountAddressesHoldingAssetsResponse where
 
 instance HasField "cursor" AccountAddressesHoldingAssetsResponse (Maybe Cursor) where
     getField = aaharCursor
+
+data AssetMintsAndBurnsResponse = AssetMintsAndBurnsResponse
+    { ambrData      :: [AssetMintsAndBurnsData]
+    , ambrCursor    :: Maybe Cursor
+    } deriving (Show)
+
+instance HasField "cursor" AssetMintsAndBurnsResponse (Maybe Cursor) where
+    getField = ambrCursor
+
+data AssetMintsAndBurnsData = AssetMintsAndBurnsData
+    { ambrAmount    :: Integer
+    , ambrSlot      :: Slot
+    , ambrTimestamp :: Time.UTCTime
+    , ambrTxHash    :: TxId
+    } deriving (Show)
+
+instance FromJSON AssetMintsAndBurnsResponse where
+    parseJSON = withObject "AssetMintsAndBurnsResponse" $ \o -> do
+        ambrCursor    <- o .:? "next_cursor"
+        ambrData      <- o .: "data"
+        pure AssetMintsAndBurnsResponse{..}
+
+instance FromJSON AssetMintsAndBurnsData where
+    parseJSON = withObject "AssetMintsAndBurnsData" $ \o -> do
+        ambrAmount    <- o .: "amount" >>= maybe (fail "AssetMintsAndBurnsResponse: read amount") pure . readMaybe
+        ambrSlot      <- o .: "slot" <&> Slot
+        ambrTimestamp <- o .: "timestamp" >>= Time.parseTimeM True Time.defaultTimeLocale "%Y-%-m-%-d %H:%M:%S"
+        ambrTxHash    <- o .: "tx_hash" <&> TxId
+        pure AssetMintsAndBurnsData{..}
 
 data TxDetailsResponse = TxDetailsResponse
     { tdrTxHash            :: TxId
