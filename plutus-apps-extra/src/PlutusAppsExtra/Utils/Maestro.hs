@@ -19,6 +19,7 @@ import qualified Data.Aeson                    as J
 import           Data.Coerce                   (coerce)
 import           Data.Functor                  ((<&>))
 import           Data.Maybe                    (catMaybes)
+import qualified Data.Text.Encoding            as T
 import qualified Data.Time                     as Time
 import           GHC.Records                   (HasField (..))
 import           Ledger                        (Address, Datum (..), DatumFromQuery (..), DatumHash, PubKeyHash (..), Slot (..),
@@ -135,3 +136,8 @@ instance ToHttpApiData (Maestro TxId) where
 
 instance ToHttpApiData (Maestro AssetClass) where
     toUrlPiece (Maestro (AssetClass (CurrencySymbol cs, TokenName token))) = T.encodeHex $ fromBuiltin $ cs <> token
+
+newtype EncodedAssetClass = EncodedAssetClass AssetClass
+
+instance ToHttpApiData EncodedAssetClass where
+    toUrlPiece (EncodedAssetClass (AssetClass (CurrencySymbol cs, TokenName token))) = T.encodeHex (fromBuiltin cs) <> T.decodeUtf8 (fromBuiltin token)

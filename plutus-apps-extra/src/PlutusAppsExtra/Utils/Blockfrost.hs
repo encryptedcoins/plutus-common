@@ -24,6 +24,7 @@ import qualified Data.ByteString.Lazy          as LBS
 import           Data.Coerce                   (coerce)
 import           Data.Functor                  ((<&>))
 import qualified Data.Text                     as T
+import qualified Data.Text.Encoding            as T
 import           Deriving.Aeson                (CamelToSnake, CustomJSON (CustomJSON), FieldLabelModifier, Generic, StripPrefix)
 import           Ledger                        (Address, Datum (..), DatumHash (..), ScriptHash, TxId (..), ValidatorHash)
 import           Plutus.Script.Utils.Value     (AssetClass (..), TokenName (..))
@@ -34,7 +35,6 @@ import           Servant.API                   (ToHttpApiData (..))
 import           Text.Hex                      (decodeHex, encodeHex)
 import qualified Text.Hex                      as T
 import           Text.Read                     (readMaybe)
-import qualified Data.Text.Encoding as Text
 
 data AccDelegationHistoryResponse = AccDelegationHistoryResponse
     { adhrActiveEpoch :: Int
@@ -173,7 +173,7 @@ instance FromJSON (Bf C.Value) where
             amt' <- readAmt amt
             assetName <-  maybe (fail "Name from hex") (pure . C.AssetName) $ T.decodeHex name
             policyId <- (either (fail . ("Policy ID from hex:" <> ) . show) (pure . C.PolicyId)
-                . C.deserialiseFromRawBytesHex C.AsScriptHash) $ Text.encodeUtf8 policy
+                . C.deserialiseFromRawBytesHex C.AsScriptHash) $ T.encodeUtf8 policy
             let assetId = C.AssetId policyId assetName
             pure $ Bf $ C.valueFromList [(assetId, amt')]
         _                          -> mzero
