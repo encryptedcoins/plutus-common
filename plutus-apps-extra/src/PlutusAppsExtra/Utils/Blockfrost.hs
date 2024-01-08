@@ -34,6 +34,7 @@ import           Servant.API                   (ToHttpApiData (..))
 import           Text.Hex                      (decodeHex, encodeHex)
 import qualified Text.Hex                      as T
 import           Text.Read                     (readMaybe)
+import qualified Data.Text.Encoding as Text
 
 data AccDelegationHistoryResponse = AccDelegationHistoryResponse
     { adhrActiveEpoch :: Int
@@ -75,7 +76,7 @@ data TxUtxoResponse = TxUtxoResponse
 
 instance FromJSON TxUtxoResponse where
     parseJSON = withObject "Tx UTXOs response" $ \o -> do
-        turTxHash  <- o .: "hash"
+        turTxHash  <- o .: "hash" <&> TxId
         turInputs  <- o .: "inputs"
         turOutputs <- o .: "outputs"
         pure TxUtxoResponse{..}
@@ -171,9 +172,8 @@ instance FromJSON (Bf C.Value) where
             let (policy, name) = T.splitAt 56 txt
             amt' <- readAmt amt
             assetName <-  maybe (fail "Name from hex") (pure . C.AssetName) $ T.decodeHex name
-            policyId <- maybe (fail "Policy ID from hex")
-                (either (fail . show) (pure . C.PolicyId) . C.deserialiseFromRawBytesHex C.AsScriptHash)
-                $ T.decodeHex policy
+            policyId <- (either (fail . ("Policy ID from hex:" <> ) . show) (pure . C.PolicyId)
+                . C.deserialiseFromRawBytesHex C.AsScriptHash) $ Text.encodeUtf8 policy
             let assetId = C.AssetId policyId assetName
             pure $ Bf $ C.valueFromList [(assetId, amt')]
         _                          -> mzero
