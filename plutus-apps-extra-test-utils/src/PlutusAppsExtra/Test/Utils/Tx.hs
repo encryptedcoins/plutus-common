@@ -24,6 +24,7 @@ import           PlutusAppsExtra.Types.Tx             (TransactionBuilder, TxCon
 import           PlutusAppsExtra.Utils.ChainIndex     (MapUTXO)
 import           PlutusAppsExtra.Utils.Datum          (inlinedUnitInTxOut)
 import           Test.Hspec                           (Expectation, expectationFailure, shouldSatisfy)
+import Test.QuickCheck (generate)
 
 type TxTestM a = StateT TxTestState IO a
 
@@ -49,7 +50,7 @@ withAdaUtxo i addr = do
         adaOut = case addr of
             (Address (PubKeyCredential pkh) mbSc) -> PublicKeyDecoratedTxOut pkh mbSc val Nothing Nothing
             (Address (ScriptCredential vh)  mbSc) -> ScriptDecoratedTxOut vh mbSc val inlinedUnitInTxOut Nothing Nothing
-    ref <- liftIO genTxOutRef
+    ref <- liftIO $ generate genTxOutRef
     modify (<> Map.fromList [(ref, adaOut)])
 
 withValueUtxo :: P.Value -> Address -> TxTestM ()
@@ -58,5 +59,5 @@ withValueUtxo val addr = do
         tokensOut = case addr of
             (Address (PubKeyCredential pkh) mbSc) -> PublicKeyDecoratedTxOut pkh mbSc val' Nothing Nothing
             (Address (ScriptCredential vh)  mbSc) -> ScriptDecoratedTxOut vh mbSc val' inlinedUnitInTxOut Nothing Nothing
-    ref <- liftIO genTxOutRef
+    ref <- liftIO $ generate genTxOutRef
     modify (<> Map.fromList [(ref, tokensOut)])
