@@ -58,7 +58,7 @@ import           Ledger.Tx.CardanoAPI                               (unspentOutp
 import           Ledger.Typed.Scripts                               (ValidatorTypes (..))
 import           Network.HTTP.Client                                (HttpExceptionContent, Request)
 import           Plutus.Script.Utils.Value                          (leq)
-import           PlutusAppsExtra.IO.ChainIndex                      (HasChainIndex (..), getRefsAt, getUtxosAt)
+import           PlutusAppsExtra.IO.ChainIndex                      (HasChainIndex, getRefsAt, getUtxosAt)
 import           PlutusTx.IsData                                    (FromData, ToData)
 import           PlutusTx.Prelude                                   (zero, (-))
 import           Prelude                                            hiding ((-))
@@ -163,19 +163,19 @@ ownAddressesBech32 aState = do
     pure $ map (^. key "id"._String) as
 
 -- Get all value at a wallet
-getWalletValue :: (HasWallet m, HasChainIndex m) => m P.Value
-getWalletValue = mconcat . fmap decoratedTxOutPlutusValue . Map.elems <$> getWalletUtxos mempty
+getWalletValue ::  forall c m. (HasWallet m, HasChainIndex c m) => m P.Value
+getWalletValue = mconcat . fmap decoratedTxOutPlutusValue . Map.elems <$> getWalletUtxos @c @m mempty
 
 -- Get all ada at a wallet
-getWalletAda :: (HasWallet m, HasChainIndex m) => m P.Ada
-getWalletAda = Ada.fromValue <$> getWalletValue
+getWalletAda ::  forall c m. (HasWallet m, HasChainIndex c m) => m P.Ada
+getWalletAda = Ada.fromValue <$> getWalletValue @c @m
 
-getWalletRefs :: (HasWallet m, HasChainIndex m) => m [TxOutRef]
-getWalletRefs = ownUsedAddresses >>= concatMapM getRefsAt
+getWalletRefs ::  forall c m. (HasWallet m, HasChainIndex c m) => m [TxOutRef]
+getWalletRefs = ownUsedAddresses >>= concatMapM (getRefsAt @c @m)
 
 -- Get all utxos at a wallet
-getWalletUtxos :: (HasWallet m, HasChainIndex m) => UtxoRequirements -> m MapUTXO
-getWalletUtxos reqs = ownUsedAddresses >>= mapM (getUtxosAt reqs) <&> mconcat
+getWalletUtxos :: forall c m. (HasWallet m, HasChainIndex c m) => UtxoRequirements -> m MapUTXO
+getWalletUtxos reqs = ownUsedAddresses >>= mapM (getUtxosAt @c @m reqs) <&> mconcat
 
 -- Get wallet total profit from a transaction.
 getTxProfit :: HasWallet m => CardanoTx -> MapUTXO -> m P.Value

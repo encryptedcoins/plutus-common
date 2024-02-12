@@ -1,47 +1,67 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric  #-}
-{-# LANGUAGE LambdaCase     #-}
-{-# LANGUAGE TupleSections  #-}
+{-# LANGUAGE AllowAmbiguousTypes     #-}
+{-# LANGUAGE ConstraintKinds         #-}
+{-# LANGUAGE DataKinds               #-}
+{-# LANGUAGE FlexibleInstances       #-}
+{-# LANGUAGE MultiParamTypeClasses   #-}
+{-# LANGUAGE ScopedTypeVariables     #-}
+{-# LANGUAGE TupleSections           #-}
+{-# LANGUAGE TypeApplications        #-}
+{-# LANGUAGE TypeFamilies            #-}
+{-# LANGUAGE UndecidableInstances    #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 
 module PlutusAppsExtra.IO.ChainIndex where
 
-import qualified Cardano.Api                          as C
-import           Control.Monad.IO.Class               (MonadIO (..))
-import           Data.Aeson                           (FromJSON)
-import qualified Data.Map                             as Map
-import           Data.Maybe                           (catMaybes)
-import           GHC.Generics                         (Generic)
-import           Ledger                               (Address, DecoratedTxOut (..), TxOutRef, selectLovelace)
-import           Plutus.Script.Utils.Ada              (Ada)
-import qualified PlutusAppsExtra.IO.ChainIndex.Kupo   as Kupo
-import qualified PlutusAppsExtra.IO.ChainIndex.Plutus as Plutus
-import           PlutusAppsExtra.Types.Tx             (UtxoRequirements)
-import           PlutusAppsExtra.Utils.ChainIndex     (MapUTXO)
+import qualified Cardano.Api                           as C
+import           Control.Monad.IO.Class                (MonadIO (..))
+import           Data.Kind                             (Constraint)
+import qualified Data.Map                              as Map
+import           Data.Maybe                            (catMaybes)
+import           GHC.Base                              (Type)
+import           Ledger                                (Address, DecoratedTxOut (..), TxOutRef, selectLovelace)
+import           Plutus.Script.Utils.Ada               (Ada)
+import qualified PlutusAppsExtra.IO.ChainIndex.Kupo    as Kupo
+import           PlutusAppsExtra.IO.ChainIndex.Maestro (MonadMaestro)
+import qualified PlutusAppsExtra.IO.ChainIndex.Maestro as Maestro
+import qualified PlutusAppsExtra.IO.ChainIndex.Plutus  as Plutus
+import           PlutusAppsExtra.Types.Tx              (UtxoRequirements)
+import           PlutusAppsExtra.Utils.ChainIndex      (MapUTXO)
 
-data ChainIndex = Plutus | Kupo
-    deriving (Show, Generic, FromJSON)
+type HasChainIndex c m = (Monad m, IsChainIndex c, ChainIndexCostraints c m)
 
-class MonadIO m => HasChainIndex m where
-    getChainIndex :: m ChainIndex
+class IsChainIndex c where
+    type ChainIndexCostraints c (m :: Type -> Type) :: Constraint
+    type ChainIndexCostraints c m = MonadIO m
+    getUtxosAt :: ChainIndexCostraints c m => UtxoRequirements -> Address -> m MapUTXO
+    getUnspentTxOutFromRef :: ChainIndexCostraints c m => UtxoRequirements -> TxOutRef -> m (Maybe DecoratedTxOut)
 
-getRefsAt :: HasChainIndex m => Address -> m [TxOutRef]
-getRefsAt addr = Map.keys <$> getUtxosAt mempty addr
+data Plutus
 
-getUtxosAt :: HasChainIndex m => UtxoRequirements -> Address -> m MapUTXO
-getUtxosAt reqs addr = getChainIndex >>= \case
-    Plutus -> liftIO $ Plutus.getUtxosAt addr
-    Kupo   -> liftIO $   Kupo.getUtxosAt reqs addr
+instance IsChainIndex Plutus where
+    getUtxosAt _ addr = liftIO $ Plutus.getUtxosAt addr
+    getUnspentTxOutFromRef _ txOutRef = liftIO $ Plutus.getUnspentTxOutFromRef txOutRef
 
-getValueAt :: HasChainIndex m => Address -> m C.Value
-getValueAt addr = mconcat . fmap _decoratedTxOutValue . Map.elems <$> getUtxosAt mempty addr
+data Kupo
 
-getAdaAt :: HasChainIndex m => Address -> m Ada
-getAdaAt addr = fromIntegral . selectLovelace <$> getValueAt addr
+instance IsChainIndex Kupo where
+    getUtxosAt reqs addr = liftIO $ Kupo.getUtxosAt reqs addr
+    getUnspentTxOutFromRef reqs txOutRef = liftIO $ Kupo.getUnspentTxOutFromRef reqs txOutRef
 
-getUnspentTxOutFromRef :: HasChainIndex m => UtxoRequirements -> TxOutRef -> m (Maybe DecoratedTxOut)
-getUnspentTxOutFromRef reqs txOutRef = getChainIndex >>= \case
-    Plutus -> liftIO $ Plutus.getUnspentTxOutFromRef txOutRef
-    Kupo   -> liftIO $   Kupo.getUnspentTxOutFromRef reqs txOutRef
+data Maestro
 
-getMapUtxoFromRefs :: HasChainIndex m => UtxoRequirements -> [TxOutRef] -> m MapUTXO
-getMapUtxoFromRefs reqs = fmap (Map.fromList . catMaybes) . mapM (\input -> fmap (input,) <$> getUnspentTxOutFromRef reqs input)
+instance IsChainIndex Maestro where
+    type ChainIndexCostraints Maestro m = (MonadIO m, MonadMaestro m)
+    getUtxosAt reqs addr = Maestro.getUtxosAt reqs addr
+    getUnspentTxOutFromRef reqs txOutRef = Maestro.getUnspentTxOutFromRef reqs txOutRef
+
+getRefsAt :: forall c m. HasChainIndex c m => Address -> m [TxOutRef]
+getRefsAt addr = Map.keys <$> getUtxosAt @c @m mempty addr
+
+getValueAt :: forall c m. HasChainIndex c m => Address -> m C.Value
+getValueAt addr = mconcat . fmap _decoratedTxOutValue . Map.elems <$> getUtxosAt @c @m mempty addr
+
+getAdaAt :: forall c m. HasChainIndex c m => Address -> m Ada
+getAdaAt addr = fromIntegral . selectLovelace <$> getValueAt @c @m addr
+
+getMapUtxoFromRefs :: forall c m. HasChainIndex c m => UtxoRequirements -> [TxOutRef] -> m MapUTXO
+getMapUtxoFromRefs reqs = fmap (Map.fromList . catMaybes) . mapM (\input -> fmap (input,) <$> getUnspentTxOutFromRef @c @m reqs input)

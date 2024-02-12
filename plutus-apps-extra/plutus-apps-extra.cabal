@@ -38,6 +38,7 @@ library
       PlutusAppsExtra.Constraints.OnChain
       PlutusAppsExtra.IO.ChainIndex
       PlutusAppsExtra.IO.ChainIndex.Kupo
+      PlutusAppsExtra.IO.ChainIndex.Maestro
       PlutusAppsExtra.IO.ChainIndex.Plutus
       PlutusAppsExtra.IO.Blockfrost
       PlutusAppsExtra.IO.Maestro
@@ -66,6 +67,7 @@ library
       base16-bytestring                      -any,
       base64                                 -any,
       aeson                                  -any,
+      blockfrost-client                      -any,
       bytestring                             -any,
       cardano-addresses                      -any,
       cardano-api                            -any,
@@ -121,6 +123,8 @@ library
       purescript-bridge                      -any,
       random                                 -any,
       req                                    -any,
+      safe-money                             -any,
+      scientific                             -any,
       serialise                              -any,
       servant                                -any,
       servant-client                         -any,
