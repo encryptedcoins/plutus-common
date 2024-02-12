@@ -68,7 +68,6 @@ test-suite plutus-apps-extra-test
     plutus-ledger                          -any,
     plutus-ledger-api                      -any,
     plutus-script-utils                    -any,
-    plutus-use-cases                       -any,
     QuickCheck                             -any,
     random                                 -any,
     text                                   -any
