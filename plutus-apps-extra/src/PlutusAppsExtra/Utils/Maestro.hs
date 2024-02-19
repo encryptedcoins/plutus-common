@@ -1,6 +1,8 @@
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -26,12 +28,14 @@ import           Data.Scientific               (floatingOrInteger)
 import qualified Data.Text                     as T
 import qualified Data.Text.Encoding            as T
 import qualified Data.Time                     as Time
+import           GHC.Generics                  (Generic)
 import           GHC.Records                   (HasField (..))
 import           Ledger                        (Address, Datum (..), DatumFromQuery (..), DatumHash, Language (..), PubKeyHash (..), Script,
                                                 ScriptHash (..), Slot (..), StakePubKeyHash (..), TxId (..), Versioned (..))
 import           Ledger.Scripts                (Script (..))
 import           Plutus.V1.Ledger.Api          (BuiltinByteString, CurrencySymbol (..), TokenName (..), fromBuiltin, toBuiltin)
 import           Plutus.V1.Ledger.Value        (AssetClass (..))
+import           PlutusAppsExtra.IO.Tx.Internal
 import           PlutusAppsExtra.Utils.Address (bech32ToAddress, bech32ToStakePubKeyHash)
 import           PlutusAppsExtra.Utils.Scripts (scriptFromCBOR)
 import           Servant.API                   (ToHttpApiData (..))
@@ -158,6 +162,27 @@ instance FromJSON TxOutputResponse where
         torReferenceScript <- o .:? "reference_script" <&> fmap unMaestro
         pure TxOutputResponse{..}
 
+newtype TxHistoryResponse = TxHistoryResponse {txsHistoryState :: [TxStateResponse]}
+    deriving (Show, Eq, Generic)
+    deriving newtype FromJSON
+
+data TxStateResponse = TxStateResponse
+    { tsrBlock     :: Maybe Int
+    , tsrState     :: TxState
+    , tsrTimestamp :: Time.UTCTime
+    , tsrTxHash    :: TxId
+    } deriving (Show, Eq)
+
+instance FromJSON TxStateResponse where
+    parseJSON = withObject "TxHistoryData" $ \o -> do
+        tsrBlock     <- (o .: "block" >>=) $ J.withText "block" $ \case
+            "-" -> pure Nothing
+            num -> maybe (fail "read block") (pure . Just) $ readMaybe $ T.unpack num
+        tsrState     <- (o .:  "state" >>=) $ J.withText "state" $ maybe (fail "read txState") pure . readMaybe . T.unpack
+        tsrTimestamp <- o .: "timestamp"
+        tsrTxHash    <- o .: "transaction_hash"  <&> TxId
+        pure TxStateResponse{..}
+
 data UtxosAtAddressResponse = UtxosAtAddressResponse
     { uaarData   :: [UtxosAtAddressData]
     , uaarCursor :: Maybe Cursor
@@ -190,6 +215,8 @@ instance FromJSON UtxosAtAddressData where
         uaadDatum           <- o .:? "datum" <&> fmap unMaestro
         uaadReferenceScript <- o .:? "reference_script" <&> fmap unMaestro
         pure UtxosAtAddressData{..}
+
+deriving via BuiltinByteString instance FromJSON (Maestro TxId)
 
 instance FromJSON (Maestro C.Value) where
     parseJSON = withObject "Bf Value" $ \o -> (,) <$> o .: "unit" <*> o .: "amount" >>= \case

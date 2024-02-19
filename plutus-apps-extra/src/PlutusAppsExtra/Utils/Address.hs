@@ -11,12 +11,13 @@
 module PlutusAppsExtra.Utils.Address where
 
 import           Cardano.Api.Shelley          (AsType (..), NetworkId (..), SerialiseAddress (..), ShelleyEra, StakeAddress (..),
-                                               StakeCredential (..), byronAddressInEra, shelleyAddressInEra, makeStakeAddress)
+                                               StakeCredential (..), byronAddressInEra, makeStakeAddress, shelleyAddressInEra)
 import           Cardano.Ledger.Alonzo.TxInfo (transKeyHash)
 import qualified Cardano.Ledger.Credential    as Shelley
 import           Data.Either.Extra            (eitherToMaybe)
 import           Data.Text                    (Text)
 
+import           Cardano.Api                  (serialiseToBech32)
 import           Control.Applicative          ((<|>))
 import           Control.Arrow                ((>>>))
 import           Ledger                       (PubKeyHash (..), StakingCredential, toPlutusAddress)
@@ -60,10 +61,13 @@ bech32ToStakeAddress = deserialiseAddress AsStakeAddress
 addressToBech32 :: NetworkId -> Address -> Maybe Text
 addressToBech32 networkId = fmap serialiseAddress . eitherToMaybe . toCardanoAddressInEra networkId
 
+stakeAddressToBech32 :: StakeAddress -> Text
+stakeAddressToBech32 = serialiseToBech32
+
 -- Convert bech32 Stake address to a Plutus StakePubKeyHash.
 bech32ToStakePubKeyHash :: Text -> Maybe StakePubKeyHash
 bech32ToStakePubKeyHash txt = do
-    StakeAddress _ payCred <- deserialiseAddress AsStakeAddress txt
+    StakeAddress _ payCred <- bech32ToStakeAddress txt
     case payCred of
             Shelley.ScriptHashObj _  -> Nothing
             Shelley.KeyHashObj kHash -> Just $ StakePubKeyHash $ transKeyHash kHash

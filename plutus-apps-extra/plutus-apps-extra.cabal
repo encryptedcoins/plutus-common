@@ -44,7 +44,14 @@ library
       PlutusAppsExtra.IO.Maestro
       PlutusAppsExtra.IO.Node
       PlutusAppsExtra.IO.Time
+      PlutusAppsExtra.IO.Tx
+      PlutusAppsExtra.IO.Tx.Cardano
+      PlutusAppsExtra.IO.Tx.Internal
+      PlutusAppsExtra.IO.Tx.Maestro
       PlutusAppsExtra.IO.Wallet
+      PlutusAppsExtra.IO.Wallet.Blockfrost
+      PlutusAppsExtra.IO.Wallet.Cardano
+      PlutusAppsExtra.IO.Wallet.Internal
       PlutusAppsExtra.Scripts.CommonValidators
       PlutusAppsExtra.Scripts.OneShotCurrency
       PlutusAppsExtra.Types.Error
@@ -56,6 +63,7 @@ library
       PlutusAppsExtra.Utils.Blockfrost
       PlutusAppsExtra.Utils.Kupo
       PlutusAppsExtra.Utils.Maestro
+      PlutusAppsExtra.Utils.Network
       PlutusAppsExtra.Utils.Orphans
       PlutusAppsExtra.Utils.Scripts
       PlutusAppsExtra.Utils.Servant
