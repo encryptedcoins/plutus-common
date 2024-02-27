@@ -1,7 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DerivingStrategies    #-}
-{-# LANGUAGE EmptyDataDeriving     #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
@@ -13,50 +12,53 @@
 
 module PlutusAppsExtra.IO.Wallet where
 
-import           Control.Lens                           ((<&>))
-import           Control.Monad.Catch                    (MonadThrow (..))
-import           Control.Monad.Extra                    (concatMapM)
-import qualified Data.Map                               as Map
-import           Ledger                                 (Address, Passphrase (..), PubKey, PubKeyHash, Signature, StakingCredential, TxId,
-                                                         TxOutRef, decoratedTxOutPlutusValue, generateFromSeed, toPublicKey)
-import           PlutusAppsExtra.IO.ChainIndex          (HasChainIndex, getRefsAt, getUtxosAt)
-import           Prelude                                hiding ((-))
-
 import           Cardano.Address.Derivation             (XPrv)
 import qualified Cardano.Wallet.Primitive.Passphrase    as Caradano
 import           Cardano.Wallet.Primitive.Types.Address (AddressState (..))
+import           Control.Lens                           ((<&>))
+import           Control.Monad.Catch                    (MonadThrow (..))
+import           Control.Monad.Extra                    (concatMapM)
 import qualified Data.ByteArray                         as BA
 import qualified Data.ByteString                        as BS
+import           Data.List.NonEmpty                     (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty                     as NonEmpty
+import qualified Data.Map                               as Map
+import           Ledger                                 (Address, Passphrase (..), PubKey, PubKeyHash, Signature, StakingCredential, TxId,
+                                                         TxOutRef, decoratedTxOutPlutusValue, generateFromSeed, toPublicKey)
 import           Ledger.Crypto                          (signTx)
 import qualified Plutus.Script.Utils.Ada                as Ada
 import qualified Plutus.Script.Utils.Ada                as P
 import qualified Plutus.V2.Ledger.Api                   as P
+import           PlutusAppsExtra.IO.ChainIndex          (HasChainIndex, getRefsAt, getUtxosAt)
 import qualified PlutusAppsExtra.IO.Wallet.Cardano      as Cardano
 import           PlutusAppsExtra.IO.Wallet.Internal     (HasWallet (getRestoredWallet), RestoredWallet (..))
 import           PlutusAppsExtra.Types.Error            (WalletError (..))
 import           PlutusAppsExtra.Types.Tx               (UtxoRequirements)
 import           PlutusAppsExtra.Utils.Address          (addressToKeyHashes)
 import           PlutusAppsExtra.Utils.ChainIndex       (MapUTXO)
+import           Prelude                                hiding ((-))
 import           System.Random                          (genByteString, getStdGen)
 
-data WalletProvider = Cardano
+data WalletProvider = Cardano | Lightweight (NonEmpty Address)
     deriving (Show, Eq)
 
 class (HasWallet m) => HasWalletProvider m where
 
     getWalletProvider :: m WalletProvider
 
-    getWalletAddress :: m Address
-    getWalletAddress = getWalletProvider >>= \case
+    getWalletAddr :: m Address
+    getWalletAddr = getWalletProvider >>= \case
         Cardano                 -> Cardano.getWalletAddr
+        Lightweight (addr :| _) -> pure addr
 
     getWalletAddresses :: m [Address]
     getWalletAddresses = getWalletProvider >>= \case
         Cardano           -> Cardano.ownAddresses (Just Used)
+        Lightweight addrs -> pure $ NonEmpty.toList addrs
 
 getWalletKeyHashes :: HasWalletProvider m => m (PubKeyHash, Maybe StakingCredential)
 getWalletKeyHashes = do
-    addrWallet <- getWalletAddress
+    addrWallet <- getWalletAddr
     case addressToKeyHashes addrWallet of
         Just hs -> pure hs
         Nothing -> throwM $ AddressDoesntCorrespondToPubKey addrWallet
