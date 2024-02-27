@@ -1,9 +1,9 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DerivingStrategies    #-}
-{-# LANGUAGE EmptyDataDeriving     #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NumericUnderscores    #-}
 {-# LANGUAGE OverloadedStrings     #-}
@@ -25,27 +25,37 @@ import qualified Plutus.Script.Utils.Ada          as Ada
 import           Plutus.Script.Utils.Value        (leq)
 import qualified Plutus.V2.Ledger.Api             as P
 import           PlutusAppsExtra.IO.ChainIndex    (HasChainIndex)
+import qualified PlutusAppsExtra.IO.Tx.Cardano    as Cardano
 import           PlutusAppsExtra.IO.Wallet        (HasWalletProvider (..))
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import           PlutusTx.IsData                  (FromData, ToData)
 import           PlutusTx.Prelude                 (zero, (-))
 import           Prelude                          hiding ((-))
 
-data TxPrvider
+data TxService = Cardano
     deriving (Show, Eq)
 
 class (HasWalletProvider m, HasChainIndex m) => HasTxProvider m where
 
-    getTxProvider :: m TxPrvider
+    getTxProvider :: m TxService
 
     signTx :: CardanoTx -> m CardanoTx
+    signTx ctx = getTxProvider >>= \case
+        Cardano     -> Cardano.signTx ctx
 
     balanceTx :: (FromData (DatumType Any), ToData (DatumType Any), ToData (RedeemerType Any), Show (DatumType Any),
         Show (RedeemerType Any)) => Params -> ScriptLookups Any -> TxConstraints (RedeemerType Any) (DatumType Any) -> m CardanoTx
+    balanceTx params lookups cons = getTxProvider >>= \case
+        Cardano     -> Cardano.balanceTx params lookups cons
+
 
     submitTx :: CardanoTx -> m ()
+    submitTx ctx = getTxProvider >>= \case
+       Cardano     -> Cardano.submitTx ctx
 
     awaitTxConfirmed :: CardanoTx -> m ()
+    awaitTxConfirmed ctx = getTxProvider >>= \case
+       Cardano     -> Cardano.awaitTxConfirmed ctx
 
 -- Send a balanced transaction to Cardano Wallet Backend and wait until transaction is confirmed or declined
 submitTxConfirmed :: HasTxProvider m => CardanoTx -> m ()
@@ -83,4 +93,4 @@ getWalletTxOutRefs params pkh mbSkc n = do
         lookups = mempty :: ScriptLookups Any
         cons    = case mbSkc of
             Just skc -> mconcat $ replicate n $ mustPayToPubKeyAddress (PaymentPubKeyHash pkh) skc $ Ada.lovelaceValueOf 10_000_000
-            Nothing -> mustPayToPubKey (PaymentPubKeyHash pkh) $ Ada.lovelaceValueOf 10_000_000
+            Nothing  -> mustPayToPubKey (PaymentPubKeyHash pkh) $ Ada.lovelaceValueOf 10_000_000
