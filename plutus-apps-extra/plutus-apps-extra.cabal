@@ -56,6 +56,7 @@ library
       PlutusAppsExtra.Utils.Blockfrost
       PlutusAppsExtra.Utils.Kupo
       PlutusAppsExtra.Utils.Maestro
+      PlutusAppsExtra.Utils.Network
       PlutusAppsExtra.Utils.Orphans
       PlutusAppsExtra.Utils.Scripts
       PlutusAppsExtra.Utils.Servant
