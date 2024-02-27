@@ -30,7 +30,7 @@ import           Plutus.Script.Utils.Value           (leq)
 import qualified Plutus.V2.Ledger.Api                as P
 import           PlutusAppsExtra.Api.Maestro         (MonadMaestro)
 import           PlutusAppsExtra.Constraints.Balance (balanceExternalTx)
-import           PlutusAppsExtra.IO.ChainIndex       (HasChainIndex)
+import           PlutusAppsExtra.IO.ChainIndex       (HasChainIndexProvider)
 import qualified PlutusAppsExtra.IO.Tx.Cardano       as Cardano
 import qualified PlutusAppsExtra.IO.Tx.Maestro       as Maestro
 import           PlutusAppsExtra.IO.Wallet           (HasWalletProvider (..), getWalletUtxos)
@@ -43,7 +43,7 @@ import           Prelude                             hiding ((-))
 data TxService = Cardano | Lightweight
     deriving (Show, Eq)
 
-class (HasWalletProvider m, HasChainIndex m) => HasTxProvider m where
+class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
 
     getTxProvider :: m TxService
 

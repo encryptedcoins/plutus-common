@@ -29,7 +29,7 @@ import           Ledger.Crypto                          (signTx)
 import qualified Plutus.Script.Utils.Ada                as Ada
 import qualified Plutus.Script.Utils.Ada                as P
 import qualified Plutus.V2.Ledger.Api                   as P
-import           PlutusAppsExtra.IO.ChainIndex          (HasChainIndex, getRefsAt, getUtxosAt)
+import           PlutusAppsExtra.IO.ChainIndex          (HasChainIndexProvider, getRefsAt, getUtxosAt)
 import qualified PlutusAppsExtra.IO.Wallet.Cardano      as Cardano
 import           PlutusAppsExtra.IO.Wallet.Internal     (HasWallet (getRestoredWallet), RestoredWallet (..))
 import           PlutusAppsExtra.Types.Error            (WalletError (..))
@@ -75,18 +75,18 @@ genPubKey :: HasWallet m => m PubKey
 genPubKey = toPublicKey <$> genPrvKey
 
 -- Get all value at a wallet
-getWalletValue ::  (HasWalletProvider m, HasChainIndex m) => m P.Value
+getWalletValue ::  (HasWalletProvider m, HasChainIndexProvider m) => m P.Value
 getWalletValue = mconcat . fmap decoratedTxOutPlutusValue . Map.elems <$> getWalletUtxos mempty
 
 -- Get all ada at a wallet
-getWalletAda :: (HasWalletProvider m, HasChainIndex m) => m P.Ada
+getWalletAda :: (HasWalletProvider m, HasChainIndexProvider m) => m P.Ada
 getWalletAda = Ada.fromValue <$> getWalletValue
 
-getWalletRefs :: (HasWalletProvider m, HasChainIndex m) => m [TxOutRef]
+getWalletRefs :: (HasWalletProvider m, HasChainIndexProvider m) => m [TxOutRef]
 getWalletRefs = getWalletAddresses >>= concatMapM getRefsAt
 
 -- Get all utxos at a wallet
-getWalletUtxos :: (HasWalletProvider m, HasChainIndex m) => UtxoRequirements -> m MapUTXO
+getWalletUtxos :: (HasWalletProvider m, HasChainIndexProvider m) => UtxoRequirements -> m MapUTXO
 getWalletUtxos reqs = getWalletAddresses >>= mapM (getUtxosAt reqs) <&> mconcat
 
 mkSignature :: HasWallet m => TxId -> m Signature

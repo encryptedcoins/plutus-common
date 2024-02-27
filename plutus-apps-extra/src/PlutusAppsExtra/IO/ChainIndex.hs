@@ -21,9 +21,9 @@ import qualified PlutusAppsExtra.IO.ChainIndex.Plutus  as Plutus
 import           PlutusAppsExtra.Types.Tx              (UtxoRequirements)
 import           PlutusAppsExtra.Utils.ChainIndex      (MapUTXO)
 
-class Monad m => HasChainIndex m where
+class Monad m => HasChainIndexProvider m where
 
-    getChainIndex :: m ChainIndex
+    getChainIndex :: m ChainIndexProvider
 
     getUtxosAt :: UtxoRequirements -> Address -> m MapUTXO
     default getUtxosAt :: MonadMaestro m => UtxoRequirements -> Address -> m MapUTXO
@@ -39,17 +39,17 @@ class Monad m => HasChainIndex m where
         Kupo    -> liftIO $ Kupo.getUnspentTxOutFromRef reqs txOutRef
         Maestro -> Maestro.getUnspentTxOutFromRef reqs txOutRef
 
-data ChainIndex = Plutus | Kupo | Maestro
+data ChainIndexProvider = Plutus | Kupo | Maestro
     deriving (Show, Eq, Generic, FromJSON)
 
-getRefsAt :: HasChainIndex m => Address -> m [TxOutRef]
+getRefsAt :: HasChainIndexProvider m => Address -> m [TxOutRef]
 getRefsAt addr = Map.keys <$> getUtxosAt mempty addr
 
-getValueAt :: HasChainIndex m => Address -> m C.Value
+getValueAt :: HasChainIndexProvider m => Address -> m C.Value
 getValueAt addr = mconcat . fmap _decoratedTxOutValue . Map.elems <$> getUtxosAt mempty addr
 
-getAdaAt :: HasChainIndex m => Address -> m Ada
+getAdaAt :: HasChainIndexProvider m => Address -> m Ada
 getAdaAt addr = fromIntegral . selectLovelace <$> getValueAt addr
 
-getMapUtxoFromRefs :: HasChainIndex m => UtxoRequirements -> [TxOutRef] -> m MapUTXO
+getMapUtxoFromRefs :: HasChainIndexProvider m => UtxoRequirements -> [TxOutRef] -> m MapUTXO
 getMapUtxoFromRefs reqs = fmap (Map.fromList . catMaybes) . mapM (\input -> fmap (input,) <$> getUnspentTxOutFromRef reqs input)
