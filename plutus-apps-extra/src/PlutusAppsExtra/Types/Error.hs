@@ -12,7 +12,7 @@
 
 module PlutusAppsExtra.Types.Error where
 
-import           Cardano.Api                    (CardanoMode, FromJSON, NetworkMagic, ToJSON, TxValidationErrorInMode)
+import           Cardano.Api                    (CardanoMode, FromJSON, NetworkId, NetworkMagic, ToJSON, TxValidationErrorInMode)
 import           Cardano.Node.Emulator          (BalancingError, CardanoLedgerError)
 import           Cardano.Wallet.Api.Types       (ApiSerialisedTransaction)
 import           Cardano.Wallet.Primitive.Types (WalletId)
@@ -76,9 +76,16 @@ data WalletError
     | AddressDoesntCorrespondToPubKey Address
     deriving (Show, Exception)
 
-data ExternalServiceError
+data BlockfrostError
     = BlockfrostUnknownNetworkMagic NetworkMagic
+    | BlockfrostAddressToBech32Error NetworkId Address
+    deriving (Show, Exception)
+
+data MaestroError
+    = MaestroNoTokenProvided
     | MaestroUnknownNetworkMagic NetworkMagic
+    | MaestroUnconvertableAddress Address
+    | MaestroUnserialisableTx CardanoTx
     deriving (Show, Exception)
 
 data SubmitTxToLocalNodeError

@@ -13,16 +13,20 @@
 
 module PlutusAppsExtra.Utils.Blockfrost where
 
-import           Cardano.Api                   (SerialiseAddress (serialiseAddress), StakeAddress)
+import           Cardano.Api                   (NetworkId, SerialiseAddress (serialiseAddress), StakeAddress)
 import qualified Cardano.Api                   as C
 import           Cardano.Api.Shelley           (PoolId)
 import           Codec.Serialise               (deserialise)
-import           Control.Monad                 (mzero)
+import           Control.Monad                 (mzero, (>=>))
+import           Control.Monad.Catch           (MonadThrow (throwM))
 import           Data.Aeson                    (FromJSON (..), ToJSON, withObject, withText, (.:))
 import qualified Data.Aeson                    as J
+import           Data.Aeson.Types              (withArray)
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.Coerce                   (coerce)
+import           Data.Foldable                 (Foldable (..))
 import           Data.Functor                  ((<&>))
+import           Data.Text                     (Text)
 import qualified Data.Text                     as T
 import qualified Data.Text.Encoding            as T
 import           Deriving.Aeson                (CamelToSnake, CustomJSON (CustomJSON), FieldLabelModifier, Generic, StripPrefix)
@@ -30,7 +34,8 @@ import           Ledger                        (Address, Datum (..), DatumHash (
 import           Plutus.Script.Utils.Value     (AssetClass (..), TokenName (..))
 import           Plutus.V1.Ledger.Api          (BuiltinByteString, CurrencySymbol (..), fromBuiltin, toBuiltin)
 import qualified Plutus.V2.Ledger.Api          as P
-import           PlutusAppsExtra.Utils.Address (bech32ToAddress)
+import           PlutusAppsExtra.Types.Error   (BlockfrostError (..))
+import           PlutusAppsExtra.Utils.Address (addressToBech32, bech32ToAddress)
 import           Servant.API                   (ToHttpApiData (..))
 import           Text.Hex                      (decodeHex, encodeHex)
 import qualified Text.Hex                      as T
@@ -41,15 +46,33 @@ data AccDelegationHistoryResponse = AccDelegationHistoryResponse
     , adhrTxHash      :: TxId
     , adhrAmount      :: Int
     , adhrPoolId      :: PoolId
-    } deriving Show
+    } deriving (Show, Eq)
 
 instance FromJSON AccDelegationHistoryResponse where
-    parseJSON = withObject "Tx delegation certificate response" $ \o -> do
+    parseJSON = withObject "Acc delegation history response" $ \o -> do
         adhrActiveEpoch <- o .: "active_epoch"
         adhrTxHash      <- o .: "tx_hash" <&> TxId
         adhrAmount      <- o .: "amount" >>= maybe (fail "amount") pure . readMaybe
         adhrPoolId      <- o .: "pool_id"
         pure AccDelegationHistoryResponse{..}
+
+newtype AccountAssociatedAddressesResponse = AccountAssociatedAddressesResponse
+    { aaarAddresses :: [Address]
+    } deriving (Show, Eq)
+
+instance FromJSON AccountAssociatedAddressesResponse where
+    parseJSON = withArray "Account associated addresses response" $
+        fmap (AccountAssociatedAddressesResponse . toList)
+            . mapM (withObject "accaount associated address" ((.: "address") >=> maybe (fail "bech32ToAddress") pure . bech32ToAddress))
+
+newtype AddressDetailsResponse = AddressDetailsResponse
+    { adrTxCount :: Integer
+    } deriving (Show, Eq)
+
+instance FromJSON AddressDetailsResponse where
+    parseJSON = withObject "Address details response" $ \o -> do
+        adrTxCount <- o .: "tx_count"
+        pure AddressDetailsResponse{..}
 
 data TxDelegationsCertsResponse = TxDelegationsCertsResponse
     { tdcrIndex       :: Int
@@ -57,7 +80,7 @@ data TxDelegationsCertsResponse = TxDelegationsCertsResponse
     , tdcrAddress     :: Address
     , tdcrPoolId      :: PoolId
     , tdcrActiveEpoch :: Int
-    } deriving Show
+    } deriving (Show, Eq)
 
 instance FromJSON TxDelegationsCertsResponse where
     parseJSON = withObject "Tx delegation certificate response" $ \o -> do
@@ -105,17 +128,17 @@ instance FromJSON TxUtxoResponseOutput where
         turoAmount    <- o .: "amount" <&> mconcat . fmap unBf
         turoIdx       <- o .: "output_index"
         turoDatumHash <- o .: "data_hash"  >>= \case
-            J.Null -> pure Nothing
+            J.Null         -> pure Nothing
             J.String dHash -> Just . DatumHash <$> toBbs dHash
-            val -> fail $ show val
+            val            -> fail $ show val
         turoInlineDatum <- o .: "inline_datum"  >>= \case
-            J.Null -> pure Nothing
+            J.Null       -> pure Nothing
             J.String dat -> maybe (fail "not a hex") (pure . Just . Datum . deserialise . LBS.fromStrict) $ decodeHex dat
-            val -> fail $ show val
+            val          -> fail $ show val
         turoReferenceScriptHash <- o .: "reference_script_hash" >>= \case
-            J.Null -> pure Nothing
+            J.Null         -> pure Nothing
             J.String sHash ->Just . P.ScriptHash <$> toBbs sHash
-            val -> fail $ show val
+            val            -> fail $ show val
         pure TxUtxoResponseOutput{..}
         where toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex
 
@@ -184,6 +207,12 @@ instance ToHttpApiData BfOrder where
     toUrlPiece = \case
         Asc  -> "asc"
         Desc -> "desc"
+
+newtype BfAddress = BfAddress Text
+    deriving newtype ToHttpApiData
+
+mkBfAddress :: MonadThrow m => NetworkId -> Address -> m BfAddress
+mkBfAddress networkId addr = maybe (throwM $ BlockfrostAddressToBech32Error networkId addr) (pure . BfAddress) $ addressToBech32 networkId addr
 
 instance ToHttpApiData (Bf StakeAddress) where
     toUrlPiece (Bf addr) = serialiseAddress addr

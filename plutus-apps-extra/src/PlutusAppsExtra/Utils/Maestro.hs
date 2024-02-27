@@ -1,5 +1,7 @@
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -15,29 +17,31 @@
 
 module PlutusAppsExtra.Utils.Maestro where
 
-import qualified Cardano.Api                   as C
-import           Control.Monad                 (forM, mzero)
-import           Data.Aeson                    (FromJSON (..), withObject, (.:), (.:?))
-import qualified Data.Aeson                    as J
-import           Data.Coerce                   (coerce)
-import           Data.Functor                  ((<&>))
-import           Data.Maybe                    (catMaybes)
-import           Data.Scientific               (floatingOrInteger)
-import qualified Data.Text                     as T
-import qualified Data.Text.Encoding            as T
-import qualified Data.Time                     as Time
-import           GHC.Records                   (HasField (..))
-import           Ledger                        (Address, Datum (..), DatumFromQuery (..), DatumHash, Language (..), PubKeyHash (..), Script,
-                                                ScriptHash (..), Slot (..), StakePubKeyHash (..), TxId (..), Versioned (..))
-import           Ledger.Scripts                (Script (..))
-import           Plutus.V1.Ledger.Api          (BuiltinByteString, CurrencySymbol (..), TokenName (..), fromBuiltin, toBuiltin)
-import           Plutus.V1.Ledger.Value        (AssetClass (..))
-import           PlutusAppsExtra.Utils.Address (bech32ToAddress, bech32ToStakePubKeyHash)
-import           PlutusAppsExtra.Utils.Scripts (scriptFromCBOR)
-import           Servant.API                   (ToHttpApiData (..))
-import           Text.Hex                      (decodeHex, encodeHex)
-import qualified Text.Hex                      as T
-import           Text.Read                     (readMaybe)
+import qualified Cardano.Api                    as C
+import           Control.Monad                  (forM, mzero)
+import           Data.Aeson                     (FromJSON (..), withObject, (.:), (.:?))
+import qualified Data.Aeson                     as J
+import           Data.Coerce                    (coerce)
+import           Data.Functor                   ((<&>))
+import           Data.Maybe                     (catMaybes)
+import           Data.Scientific                (floatingOrInteger)
+import qualified Data.Text                      as T
+import qualified Data.Text.Encoding             as T
+import qualified Data.Time                      as Time
+import           GHC.Generics                   (Generic)
+import           GHC.Records                    (HasField (..))
+import           Ledger                         (Address, Datum (..), DatumFromQuery (..), DatumHash, Language (..), PubKeyHash (..),
+                                                 Script, ScriptHash (..), Slot (..), StakePubKeyHash (..), TxId (..), Versioned (..))
+import           Ledger.Scripts                 (Script (..))
+import           Plutus.V1.Ledger.Api           (BuiltinByteString, CurrencySymbol (..), TokenName (..), fromBuiltin, toBuiltin)
+import           Plutus.V1.Ledger.Value         (AssetClass (..))
+import           PlutusAppsExtra.IO.Tx.Internal
+import           PlutusAppsExtra.Utils.Address  (bech32ToAddress, bech32ToStakePubKeyHash)
+import           PlutusAppsExtra.Utils.Scripts  (scriptFromCBOR)
+import           Servant.API                    (ToHttpApiData (..))
+import           Text.Hex                       (decodeHex, encodeHex)
+import qualified Text.Hex                       as T
+import           Text.Read                      (readMaybe)
 
 newtype Maestro a = Maestro {unMaestro :: a}
 
@@ -69,8 +73,8 @@ instance HasField "cursor" AccountAddressesHoldingAssetsResponse (Maybe Cursor) 
     getField = aaharCursor
 
 data AssetMintsAndBurnsResponse = AssetMintsAndBurnsResponse
-    { ambrData      :: [AssetMintsAndBurnsData]
-    , ambrCursor    :: Maybe Cursor
+    { ambrData   :: [AssetMintsAndBurnsData]
+    , ambrCursor :: Maybe Cursor
     } deriving (Show)
 
 instance HasField "cursor" AssetMintsAndBurnsResponse (Maybe Cursor) where
@@ -158,6 +162,27 @@ instance FromJSON TxOutputResponse where
         torReferenceScript <- o .:? "reference_script" <&> fmap unMaestro
         pure TxOutputResponse{..}
 
+newtype TxHistoryResponse = TxHistoryResponse {txsHistoryState :: [TxStateResponse]}
+    deriving (Show, Eq, Generic)
+    deriving newtype FromJSON
+
+data TxStateResponse = TxStateResponse
+    { tsrBlock     :: Maybe Int
+    , tsrState     :: TxState
+    , tsrTimestamp :: Time.UTCTime
+    , tsrTxHash    :: TxId
+    } deriving (Show, Eq)
+
+instance FromJSON TxStateResponse where
+    parseJSON = withObject "TxHistoryData" $ \o -> do
+        tsrBlock     <- (o .: "block" >>=) $ J.withText "block" $ \case
+            "-" -> pure Nothing
+            num -> maybe (fail "read block") (pure . Just) $ readMaybe $ T.unpack num
+        tsrState     <- (o .:  "state" >>=) $ J.withText "state" $ maybe (fail "read txState") pure . readMaybe . T.unpack
+        tsrTimestamp <- o .: "timestamp"
+        tsrTxHash    <- o .: "transaction_hash"  <&> TxId
+        pure TxStateResponse{..}
+
 data UtxosAtAddressResponse = UtxosAtAddressResponse
     { uaarData   :: [UtxosAtAddressData]
     , uaarCursor :: Maybe Cursor
@@ -191,6 +216,8 @@ instance FromJSON UtxosAtAddressData where
         uaadReferenceScript <- o .:? "reference_script" <&> fmap unMaestro
         pure UtxosAtAddressData{..}
 
+deriving via BuiltinByteString instance FromJSON (Maestro TxId)
+
 instance FromJSON (Maestro C.Value) where
     parseJSON = withObject "Bf Value" $ \o -> (,) <$> o .: "unit" <*> o .: "amount" >>= \case
         (J.String "lovelace", amt) -> readAmt amt <&> Maestro . C.lovelaceToValue
@@ -215,7 +242,7 @@ instance FromJSON (Maestro (DatumHash, DatumFromQuery)) where
         dfq <- o .: "type" >>= \case
             J.String "hash"   -> pure DatumUnknown
             J.String "inline" -> o .: "bytes" <&>  DatumInline . Datum
-            _ -> fail "maestro datum type"
+            _                 -> fail "maestro datum type"
         pure $ Maestro (dh, dfq)
 
 instance FromJSON (Maestro (Versioned Script)) where

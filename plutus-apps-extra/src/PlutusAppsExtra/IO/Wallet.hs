@@ -163,19 +163,19 @@ ownAddressesBech32 aState = do
     pure $ map (^. key "id"._String) as
 
 -- Get all value at a wallet
-getWalletValue ::  forall c m. (HasWallet m, HasChainIndex c m) => m P.Value
-getWalletValue = mconcat . fmap decoratedTxOutPlutusValue . Map.elems <$> getWalletUtxos @c @m mempty
+getWalletValue :: (HasWallet m, HasChainIndex m) => m P.Value
+getWalletValue = mconcat . fmap decoratedTxOutPlutusValue . Map.elems <$> getWalletUtxos mempty
 
 -- Get all ada at a wallet
-getWalletAda ::  forall c m. (HasWallet m, HasChainIndex c m) => m P.Ada
-getWalletAda = Ada.fromValue <$> getWalletValue @c @m
+getWalletAda ::  (HasWallet m, HasChainIndex m) => m P.Ada
+getWalletAda = Ada.fromValue <$> getWalletValue
 
-getWalletRefs ::  forall c m. (HasWallet m, HasChainIndex c m) => m [TxOutRef]
-getWalletRefs = ownUsedAddresses >>= concatMapM (getRefsAt @c @m)
+getWalletRefs ::  (HasWallet m, HasChainIndex m) => m [TxOutRef]
+getWalletRefs = ownUsedAddresses >>= concatMapM getRefsAt
 
 -- Get all utxos at a wallet
-getWalletUtxos :: forall c m. (HasWallet m, HasChainIndex c m) => UtxoRequirements -> m MapUTXO
-getWalletUtxos reqs = ownUsedAddresses >>= mapM (getUtxosAt @c @m reqs) <&> mconcat
+getWalletUtxos :: (HasWallet m, HasChainIndex m) => UtxoRequirements -> m MapUTXO
+getWalletUtxos reqs = ownUsedAddresses >>= mapM (getUtxosAt reqs) <&> mconcat
 
 -- Get wallet total profit from a transaction.
 getTxProfit :: HasWallet m => CardanoTx -> MapUTXO -> m P.Value
