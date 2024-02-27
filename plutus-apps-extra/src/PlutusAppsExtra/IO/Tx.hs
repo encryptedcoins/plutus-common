@@ -40,12 +40,12 @@ import           PlutusTx.IsData                     (FromData, ToData)
 import           PlutusTx.Prelude                    (zero, (-))
 import           Prelude                             hiding ((-))
 
-data TxService = Cardano | Lightweight
+data TxProvider = Cardano | Lightweight
     deriving (Show, Eq)
 
 class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
 
-    getTxProvider :: m TxService
+    getTxProvider :: m TxProvider
 
     signTx :: CardanoTx -> m CardanoTx
     signTx ctx = getTxProvider >>= \case
