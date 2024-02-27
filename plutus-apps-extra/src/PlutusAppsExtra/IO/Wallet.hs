@@ -4,6 +4,7 @@
 {-# LANGUAGE EmptyDataDeriving     #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
@@ -23,12 +24,14 @@ import           Prelude                                hiding ((-))
 
 import           Cardano.Address.Derivation             (XPrv)
 import qualified Cardano.Wallet.Primitive.Passphrase    as Caradano
+import           Cardano.Wallet.Primitive.Types.Address (AddressState (..))
 import qualified Data.ByteArray                         as BA
 import qualified Data.ByteString                        as BS
 import           Ledger.Crypto                          (signTx)
 import qualified Plutus.Script.Utils.Ada                as Ada
 import qualified Plutus.Script.Utils.Ada                as P
 import qualified Plutus.V2.Ledger.Api                   as P
+import qualified PlutusAppsExtra.IO.Wallet.Cardano      as Cardano
 import           PlutusAppsExtra.IO.Wallet.Internal     (HasWallet (getRestoredWallet), RestoredWallet (..))
 import           PlutusAppsExtra.Types.Error            (WalletError (..))
 import           PlutusAppsExtra.Types.Tx               (UtxoRequirements)
@@ -36,7 +39,7 @@ import           PlutusAppsExtra.Utils.Address          (addressToKeyHashes)
 import           PlutusAppsExtra.Utils.ChainIndex       (MapUTXO)
 import           System.Random                          (genByteString, getStdGen)
 
-data WalletProvider
+data WalletProvider = Cardano
     deriving (Show, Eq)
 
 class (HasWallet m) => HasWalletProvider m where
@@ -44,8 +47,12 @@ class (HasWallet m) => HasWalletProvider m where
     getWalletProvider :: m WalletProvider
 
     getWalletAddress :: m Address
+    getWalletAddress = getWalletProvider >>= \case
+        Cardano                 -> Cardano.getWalletAddr
 
     getWalletAddresses :: m [Address]
+    getWalletAddresses = getWalletProvider >>= \case
+        Cardano           -> Cardano.ownAddresses (Just Used)
 
 getWalletKeyHashes :: HasWalletProvider m => m (PubKeyHash, Maybe StakingCredential)
 getWalletKeyHashes = do

@@ -45,6 +45,7 @@ library
       PlutusAppsExtra.IO.Node
       PlutusAppsExtra.IO.Tx.Internal
       PlutusAppsExtra.IO.Time
+      PlutusAppsExtra.IO.Wallet.Cardano
       PlutusAppsExtra.IO.Wallet.Internal
       PlutusAppsExtra.IO.Wallet
       PlutusAppsExtra.Scripts.CommonValidators
