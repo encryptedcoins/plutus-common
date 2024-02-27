@@ -28,6 +28,7 @@ import qualified Ledger.Tx.Constraints.OffChain as Ledger
 import           Network.HTTP.Client            (HttpExceptionContent, Request)
 import qualified Plutus.V2.Ledger.Api           as P
 import           Prelude
+import           PlutusAppsExtra.IO.Tx.Internal (TxState)
 
 data ConnectionError = ConnectionError Request HttpExceptionContent
     deriving (Show, Exception)
@@ -48,6 +49,7 @@ data MkTxError
     | CantExtractKeyHashesFromAddress Address
     | ConvertApiSerialisedTxToCardanoTxError ApiSerialisedTransaction
     | NotEnoughFunds P.Value
+    | FailedToSubmit TxState
     | UnbuildableTxOut DecoratedTxOut ToCardanoError
     | UnbuildableExportTx UnbalancedTx
     | UnbuildableUnbalancedTx Text Text

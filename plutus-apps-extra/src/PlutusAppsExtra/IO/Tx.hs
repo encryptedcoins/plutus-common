@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -12,27 +13,34 @@
 
 module PlutusAppsExtra.IO.Tx where
 
-import           Cardano.Node.Emulator            (Params)
-import           Control.Monad.IO.Class           (MonadIO (..))
-import qualified Data.Map                         as Map
-import           Ledger                           (CardanoTx (..), DecoratedTxOut (..), PaymentPubKeyHash (PaymentPubKeyHash), PubKeyHash,
-                                                   StakingCredential, TxOutRef, _decoratedTxOutAddress, fromCardanoValue,
-                                                   getCardanoTxOutputs, toPlutusAddress, txOutAddress, txOutValue)
-import           Ledger.Tx.CardanoAPI             (unspentOutputsTx)
-import           Ledger.Tx.Constraints            (ScriptLookups, TxConstraints, mustPayToPubKey, mustPayToPubKeyAddress)
-import           Ledger.Typed.Scripts             (Any, ValidatorTypes (..))
-import qualified Plutus.Script.Utils.Ada          as Ada
-import           Plutus.Script.Utils.Value        (leq)
-import qualified Plutus.V2.Ledger.Api             as P
-import           PlutusAppsExtra.IO.ChainIndex    (HasChainIndex)
-import qualified PlutusAppsExtra.IO.Tx.Cardano    as Cardano
-import           PlutusAppsExtra.IO.Wallet        (HasWalletProvider (..))
-import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
-import           PlutusTx.IsData                  (FromData, ToData)
-import           PlutusTx.Prelude                 (zero, (-))
-import           Prelude                          hiding ((-))
+import           Cardano.Address.Style.Shelley       (getKey)
+import           Cardano.Node.Emulator               (Params)
+import           Control.Monad                       (void)
+import           Control.Monad.IO.Class              (MonadIO (..))
+import qualified Data.Map                            as Map
+import           Ledger                              (CardanoTx (..), DecoratedTxOut (..), PaymentPubKeyHash (PaymentPubKeyHash),
+                                                      PubKeyHash, StakingCredential, TxOutRef, _decoratedTxOutAddress, fromCardanoValue,
+                                                      getCardanoTxOutputs, toPlutusAddress, txOutAddress, txOutValue)
+import qualified Ledger
+import           Ledger.Tx.CardanoAPI                (unspentOutputsTx)
+import           Ledger.Tx.Constraints               (ScriptLookups, TxConstraints, mustPayToPubKey, mustPayToPubKeyAddress)
+import           Ledger.Typed.Scripts                (Any, ValidatorTypes (..))
+import qualified Plutus.Script.Utils.Ada             as Ada
+import           Plutus.Script.Utils.Value           (leq)
+import qualified Plutus.V2.Ledger.Api                as P
+import           PlutusAppsExtra.Api.Maestro         (MonadMaestro)
+import           PlutusAppsExtra.Constraints.Balance (balanceExternalTx)
+import           PlutusAppsExtra.IO.ChainIndex       (HasChainIndex)
+import qualified PlutusAppsExtra.IO.Tx.Cardano       as Cardano
+import qualified PlutusAppsExtra.IO.Tx.Maestro       as Maestro
+import           PlutusAppsExtra.IO.Wallet           (HasWalletProvider (..), getWalletUtxos)
+import           PlutusAppsExtra.IO.Wallet.Internal  (getWalletKeys, wkPaymentKey)
+import           PlutusAppsExtra.Utils.ChainIndex    (MapUTXO)
+import           PlutusTx.IsData                     (FromData, ToData)
+import           PlutusTx.Prelude                    (zero, (-))
+import           Prelude                             hiding ((-))
 
-data TxService = Cardano
+data TxService = Cardano | Lightweight
     deriving (Show, Eq)
 
 class (HasWalletProvider m, HasChainIndex m) => HasTxProvider m where
@@ -42,20 +50,28 @@ class (HasWalletProvider m, HasChainIndex m) => HasTxProvider m where
     signTx :: CardanoTx -> m CardanoTx
     signTx ctx = getTxProvider >>= \case
         Cardano     -> Cardano.signTx ctx
+        Lightweight -> flip Ledger.addCardanoTxSignature ctx <$> (getKey .  wkPaymentKey <$> getWalletKeys)
 
     balanceTx :: (FromData (DatumType Any), ToData (DatumType Any), ToData (RedeemerType Any), Show (DatumType Any),
         Show (RedeemerType Any)) => Params -> ScriptLookups Any -> TxConstraints (RedeemerType Any) (DatumType Any) -> m CardanoTx
     balanceTx params lookups cons = getTxProvider >>= \case
         Cardano     -> Cardano.balanceTx params lookups cons
-
+        Lightweight -> do
+            changeAddress <- getWalletAddr
+            walletUTXO <- getWalletUtxos mempty
+            balanceExternalTx params walletUTXO changeAddress lookups cons
 
     submitTx :: CardanoTx -> m ()
+    default submitTx :: MonadMaestro m => CardanoTx -> m ()
     submitTx ctx = getTxProvider >>= \case
        Cardano     -> Cardano.submitTx ctx
+       Lightweight -> void $ Maestro.submitTx ctx
 
     awaitTxConfirmed :: CardanoTx -> m ()
+    default awaitTxConfirmed :: MonadMaestro m => CardanoTx -> m ()
     awaitTxConfirmed ctx = getTxProvider >>= \case
        Cardano     -> Cardano.awaitTxConfirmed ctx
+       Lightweight -> Maestro.awaitTxConfirmed ctx
 
 -- Send a balanced transaction to Cardano Wallet Backend and wait until transaction is confirmed or declined
 submitTxConfirmed :: HasTxProvider m => CardanoTx -> m ()

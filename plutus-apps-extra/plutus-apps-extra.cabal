@@ -46,6 +46,7 @@ library
       PlutusAppsExtra.IO.Tx
       PlutusAppsExtra.IO.Tx.Cardano
       PlutusAppsExtra.IO.Tx.Internal
+      PlutusAppsExtra.IO.Tx.Maestro
       PlutusAppsExtra.IO.Time
       PlutusAppsExtra.IO.Wallet.Cardano
       PlutusAppsExtra.IO.Wallet.Internal
