@@ -1,5 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -18,11 +20,13 @@ import           Cardano.Wallet.Primitive.Types.Address (AddressState (..))
 import           Control.Lens                           ((<&>))
 import           Control.Monad.Catch                    (MonadThrow (..))
 import           Control.Monad.Extra                    (concatMapM)
+import           Data.Aeson                             (FromJSON, ToJSON)
 import qualified Data.ByteArray                         as BA
 import qualified Data.ByteString                        as BS
 import           Data.List.NonEmpty                     (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                     as NonEmpty
 import qualified Data.Map                               as Map
+import           GHC.Generics                           (Generic)
 import           Ledger                                 (Address, Passphrase (..), PubKey, PubKeyHash, Signature, StakingCredential, TxId,
                                                          TxOutRef, decoratedTxOutPlutusValue, generateFromSeed, toPublicKey)
 import           Ledger.Crypto                          (signTx)
@@ -40,7 +44,7 @@ import           Prelude                                hiding ((-))
 import           System.Random                          (genByteString, getStdGen)
 
 data WalletProvider = Cardano | Lightweight (NonEmpty Address)
-    deriving (Show, Eq)
+    deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 class (HasWallet m) => HasWalletProvider m where
 

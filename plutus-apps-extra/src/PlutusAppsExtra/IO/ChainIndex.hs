@@ -8,7 +8,7 @@ module PlutusAppsExtra.IO.ChainIndex where
 
 import qualified Cardano.Api                           as C
 import           Control.Monad.IO.Class                (MonadIO (..))
-import           Data.Aeson                            (FromJSON)
+import           Data.Aeson                            (FromJSON, ToJSON)
 import qualified Data.Map                              as Map
 import           Data.Maybe                            (catMaybes)
 import           GHC.Generics                          (Generic)
@@ -23,24 +23,24 @@ import           PlutusAppsExtra.Utils.ChainIndex      (MapUTXO)
 
 class Monad m => HasChainIndexProvider m where
 
-    getChainIndex :: m ChainIndexProvider
+    getChainIndexProvider :: m ChainIndexProvider
 
     getUtxosAt :: UtxoRequirements -> Address -> m MapUTXO
     default getUtxosAt :: MonadMaestro m => UtxoRequirements -> Address -> m MapUTXO
-    getUtxosAt reqs addr = getChainIndex >>= \case
+    getUtxosAt reqs addr = getChainIndexProvider >>= \case
         Plutus  -> liftIO $ Plutus.getUtxosAt addr
         Kupo    -> liftIO $ Kupo.getUtxosAt reqs addr
         Maestro -> Maestro.getUtxosAt reqs addr
 
     getUnspentTxOutFromRef :: UtxoRequirements -> TxOutRef -> m (Maybe DecoratedTxOut)
     default getUnspentTxOutFromRef :: MonadMaestro m => UtxoRequirements -> TxOutRef -> m (Maybe DecoratedTxOut)
-    getUnspentTxOutFromRef reqs txOutRef = getChainIndex >>= \case
+    getUnspentTxOutFromRef reqs txOutRef = getChainIndexProvider >>= \case
         Plutus  -> liftIO $ Plutus.getUnspentTxOutFromRef txOutRef
         Kupo    -> liftIO $ Kupo.getUnspentTxOutFromRef reqs txOutRef
         Maestro -> Maestro.getUnspentTxOutFromRef reqs txOutRef
 
 data ChainIndexProvider = Plutus | Kupo | Maestro
-    deriving (Show, Eq, Generic, FromJSON)
+    deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 getRefsAt :: HasChainIndexProvider m => Address -> m [TxOutRef]
 getRefsAt addr = Map.keys <$> getUtxosAt mempty addr

@@ -1,6 +1,8 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DefaultSignatures     #-}
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -17,7 +19,9 @@ import           Cardano.Address.Style.Shelley       (getKey)
 import           Cardano.Node.Emulator               (Params)
 import           Control.Monad                       (void)
 import           Control.Monad.IO.Class              (MonadIO (..))
+import           Data.Aeson                          (FromJSON, ToJSON)
 import qualified Data.Map                            as Map
+import           GHC.Generics                        (Generic)
 import           Ledger                              (CardanoTx (..), DecoratedTxOut (..), PaymentPubKeyHash (PaymentPubKeyHash),
                                                       PubKeyHash, StakingCredential, TxOutRef, _decoratedTxOutAddress, fromCardanoValue,
                                                       getCardanoTxOutputs, toPlutusAddress, txOutAddress, txOutValue)
@@ -41,7 +45,7 @@ import           PlutusTx.Prelude                    (zero, (-))
 import           Prelude                             hiding ((-))
 
 data TxProvider = Cardano | Lightweight
-    deriving (Show, Eq)
+    deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
 
