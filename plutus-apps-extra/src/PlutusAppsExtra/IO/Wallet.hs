@@ -21,7 +21,7 @@ import           Cardano.Node.Emulator                              (Params)
 import qualified Cardano.Wallet.Api.Client                          as Client
 import           Cardano.Wallet.Api.Types                           (ApiSerialisedTransaction (..),
                                                                      ApiSignTransactionPostData (ApiSignTransactionPostData),
-                                                                     ApiT (..), ApiTxId (..), ApiWallet)
+                                                                     ApiT (..), ApiTxId (..), ApiWallet, ApiNetworkInformation)
 import           Cardano.Wallet.Api.Types.SchemaMetadata            (TxMetadataSchema (..))
 import           Cardano.Wallet.LocalClient.ExportTx                (export)
 import           Cardano.Wallet.Primitive.AddressDerivation         (WalletKey (digest, publicKey))
@@ -69,7 +69,8 @@ import qualified Plutus.Script.Utils.Ada                            as Ada
 import qualified Plutus.Script.Utils.Ada                            as P
 import qualified Plutus.V2.Ledger.Api                               as P
 import           PlutusAppsExtra.Types.Error                        (ConnectionError, MkTxError (..), WalletError (..),
-                                                                     throwEither, throwMaybe, mkUnbuildableUnbalancedTxError)
+                                                                     mkUnbuildableUnbalancedTxError, throwEither, throwMaybe)
+import           PlutusAppsExtra.Types.Tx                           (UtxoRequirements)
 import           PlutusAppsExtra.Utils.Address                      (addressToKeyHashes, bech32ToAddress)
 import           PlutusAppsExtra.Utils.ChainIndex                   (MapUTXO)
 import           PlutusAppsExtra.Utils.Servant                      (Endpoint, getFromEndpointOnPort,
@@ -150,33 +151,36 @@ getWalletFromId :: HasWallet m => WalletId -> m ApiWallet
 getWalletFromId = getFromEndpointWallet . Client.getWallet Client.walletClient . ApiT
 
 ownAddresses :: HasWallet m => m [Address]
-ownAddresses = mapMaybe bech32ToAddress <$> ownAddressesBech32
+ownAddresses = mapMaybe bech32ToAddress <$> ownAddressesBech32 Nothing
 
-ownAddressesBech32 :: HasWallet m => m [Text]
-ownAddressesBech32 = do
+ownUsedAddresses :: HasWallet m => m [Address]
+ownUsedAddresses = mapMaybe bech32ToAddress <$> ownAddressesBech32 (Just Used)
+
+ownAddressesBech32 :: HasWallet m => Maybe AddressState -> m [Text]
+ownAddressesBech32 aState = do
     walletId <- getWalletId
-    as <- getFromEndpointWallet $ Client.listAddresses  Client.addressClient (ApiT walletId) Nothing
+    as <- getFromEndpointWallet $ Client.listAddresses  Client.addressClient (ApiT walletId) (ApiT <$> aState)
     pure $ map (^. key "id"._String) as
 
 -- Get all value at a wallet
 getWalletValue :: (HasWallet m, HasChainIndex m) => m P.Value
-getWalletValue = mconcat . fmap decoratedTxOutPlutusValue . Map.elems <$> getWalletUtxos
+getWalletValue = mconcat . fmap decoratedTxOutPlutusValue . Map.elems <$> getWalletUtxos mempty
 
 -- Get all ada at a wallet
 getWalletAda :: (HasWallet m, HasChainIndex m) => m P.Ada
 getWalletAda = Ada.fromValue <$> getWalletValue
 
 getWalletRefs :: (HasWallet m, HasChainIndex m) => m [TxOutRef]
-getWalletRefs = ownAddresses >>= concatMapM getRefsAt
+getWalletRefs = ownUsedAddresses >>= concatMapM getRefsAt
 
 -- Get all utxos at a wallet
-getWalletUtxos :: (HasWallet m, HasChainIndex m) => m MapUTXO
-getWalletUtxos = ownAddresses >>= mapM getUtxosAt <&> mconcat
+getWalletUtxos :: (HasWallet m, HasChainIndex m) => UtxoRequirements -> m MapUTXO
+getWalletUtxos reqs = ownUsedAddresses >>= mapM (getUtxosAt reqs) <&> mconcat
 
 -- Get wallet total profit from a transaction.
 getTxProfit :: HasWallet m => CardanoTx -> MapUTXO -> m P.Value
 getTxProfit tx txUtxos = do
-        addrs <- ownAddresses
+        addrs <- ownUsedAddresses
         let txOuts   = Map.elems txUtxos
             spent    = getTotalValue addrs _decoratedTxOutValue _decoratedTxOutAddress txOuts
             produced = getTotalValue addrs txOutValue (toPlutusAddress . txOutAddress) $ getCardanoTxOutputs tx
@@ -270,3 +274,8 @@ getWalletTxOutRefs params pkh mbSkc n = do
         cons    = case mbSkc of
             Just skc -> mconcat $ replicate n $ mustPayToPubKeyAddress (PaymentPubKeyHash pkh) skc $ Ada.lovelaceValueOf 10_000_000
             Nothing -> mustPayToPubKey (PaymentPubKeyHash pkh) $ Ada.lovelaceValueOf 10_000_000
+
+--------------------------------------------- Misc ---------------------------------------------
+
+getHealth :: MonadIO m => m ApiNetworkInformation
+getHealth = getFromEndpointWallet $ Client.networkInformation Client.networkClient

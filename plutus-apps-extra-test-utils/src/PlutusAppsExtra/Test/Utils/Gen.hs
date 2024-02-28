@@ -7,23 +7,23 @@ import           Ledger                 (Address (..), PaymentPubKey (..), PubKe
                                          pubKeyAddress)
 import qualified Plutus.V1.Ledger.Bytes as LedgerBytes
 import           Plutus.V2.Ledger.Api   (Credential (..), StakingCredential (StakingHash), toBuiltin)
-import           System.Random          (randomIO, randomRIO)
-import           Test.QuickCheck        (Arbitrary (..), generate)
+import           Test.QuickCheck        (Arbitrary (..), choose)
+import           Test.QuickCheck.Gen    (Gen)
 
-genPubKeyAddress :: IO Address
+genPubKeyAddress :: Gen Address
 genPubKeyAddress = do
-    lb <- LedgerBytes.fromBytes <$> generate arbitrary
+    lb <- LedgerBytes.fromBytes <$> arbitrary
     pure $ pubKeyAddress (PaymentPubKey (PubKey lb)) Nothing
 
-genPubKeyAddressWithStakingHash :: IO Address
+genPubKeyAddressWithStakingHash :: Gen Address
 genPubKeyAddressWithStakingHash = do
     Address cred _ <- genPubKeyAddress
-    pkh <- PubKeyHash . toBuiltin . BS.pack <$> replicateM 28 (generate arbitrary)
+    pkh <- PubKeyHash . toBuiltin . BS.pack <$> replicateM 28 arbitrary
     pure $ Address cred $ Just (StakingHash (PubKeyCredential pkh))
 
 -- An existing arbitrary instance is rejected by a local node
-genTxOutRef :: IO TxOutRef
-genTxOutRef = TxOutRef <$> (TxId . toBuiltin . BS.pack <$> replicateM 32 (generate arbitrary)) <*> randomRIO (1,40)
+genTxOutRef :: Gen TxOutRef
+genTxOutRef = TxOutRef <$> (TxId . toBuiltin . BS.pack <$> replicateM 32 arbitrary) <*> choose (1,40)
 
-genCollateral :: IO (Maybe TxOutRef)
-genCollateral = randomIO >>= \b -> if b then pure Nothing else Just <$> genTxOutRef
+genCollateral :: Gen (Maybe TxOutRef)
+genCollateral = arbitrary >>= \b -> if b then pure Nothing else Just <$> genTxOutRef

@@ -30,7 +30,7 @@ import           Plutus.V2.Ledger.Tx              (TxId)
 import           PlutusAppsExtra.IO.Time          (currentTime)
 import           PlutusAppsExtra.Types.Error      (ConnectionError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
-import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, handle404, pattern ConnectionErrorOnPort)
+import           PlutusAppsExtra.Utils.Servant    (Endpoint, getFromEndpointOnPort, handle404Maybe, pattern ConnectionErrorOnPort)
 import           PlutusTx.Prelude                 hiding (fmap, mapM, mconcat, pure, traverse, (<$>), (<>))
 import           Prelude                          (IO, Show (..), fmap, mapM, traverse, (<$>), (<>))
 
@@ -114,7 +114,7 @@ foldUtxoRefsAt f ini addr = go ini (Just def)
             go newAcc (nextPageQuery page')
 
 getUnspentTxOutFromRef :: TxOutRef -> IO (Maybe DecoratedTxOut)
-getUnspentTxOutFromRef = handle404 (pure Nothing) . fmap Just . getFromEndpointChainIndex . Client.getUnspentTxOut
+getUnspentTxOutFromRef = handle404Maybe. getFromEndpointChainIndex . Client.getUnspentTxOut
 
 -- Get the unspent transaction output references at an address.
 utxoRefsAt :: PageQuery TxOutRef -> Address -> IO UtxosResponse
@@ -122,13 +122,13 @@ utxoRefsAt pageQ =
     getFromEndpointChainIndex . Client.getUtxoSetAtAddress . UtxoAtAddressRequest (Just pageQ) . addressCredential
 
 getChainIndexTxFromId :: TxId -> IO (Maybe ChainIndexTx)
-getChainIndexTxFromId = handle404 (pure Nothing) . fmap Just . getFromEndpointChainIndex . Client.getTx
+getChainIndexTxFromId = handle404Maybe . getFromEndpointChainIndex . Client.getTx
 
 getTxFromId :: TxId -> IO (Maybe CardanoTx)
 getTxFromId = fmap (>>= _citxCardanoTx) . getChainIndexTxFromId
 
 getUtxosWithCurrency :: AssetClass -> IO MapUTXO
-getUtxosWithCurrency asset = go [] (Just def) 
+getUtxosWithCurrency asset = go [] (Just def)
     >>= fmap (Map.fromList . catMaybes) . mapM (\ref -> fmap sequence $ (ref,) <$> getUnspentTxOutFromRef ref)
     where
         go acc Nothing = pure acc

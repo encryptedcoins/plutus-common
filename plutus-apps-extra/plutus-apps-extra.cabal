@@ -18,18 +18,21 @@ common lang
       -Wincomplete-record-updates
       -Wnoncanonical-monad-instances
       -Wredundant-constraints
-      
+
       -- See Plutus Tx readme
       -fno-ignore-interface-pragmas
       -fno-omit-interface-pragmas
       -fno-specialise
       -fno-strictness
-      -fobject-code       
+      -fobject-code
       -fplugin-opt PlutusTx.Plugin:defer-errors
 
 library
     import: lang
     exposed-modules:
+      PlutusAppsExtra.Api.Blockfrost
+      PlutusAppsExtra.Api.Kupo
+      PlutusAppsExtra.Api.Maestro
       PlutusAppsExtra.Constraints.Balance
       PlutusAppsExtra.Constraints.OffChain
       PlutusAppsExtra.Constraints.OnChain
@@ -37,6 +40,7 @@ library
       PlutusAppsExtra.IO.ChainIndex.Kupo
       PlutusAppsExtra.IO.ChainIndex.Plutus
       PlutusAppsExtra.IO.Blockfrost
+      PlutusAppsExtra.IO.Maestro
       PlutusAppsExtra.IO.Node
       PlutusAppsExtra.IO.Time
       PlutusAppsExtra.IO.Wallet
@@ -50,6 +54,7 @@ library
       PlutusAppsExtra.Utils.Datum
       PlutusAppsExtra.Utils.Blockfrost
       PlutusAppsExtra.Utils.Kupo
+      PlutusAppsExtra.Utils.Maestro
       PlutusAppsExtra.Utils.Orphans
       PlutusAppsExtra.Utils.Scripts
       PlutusAppsExtra.Utils.Servant
@@ -91,6 +96,7 @@ library
       hex-text                               -any,
       http-client                            -any,
       http-client-tls                        -any,
+      http-media                             -any,
       http-types                             -any,
       lens                                   -any,
       lens-aeson                             -any,

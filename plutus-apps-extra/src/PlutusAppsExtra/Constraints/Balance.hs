@@ -31,7 +31,7 @@ balanceExternalTx :: (MonadThrow m)
                   -> TxConstraints (RedeemerType Any) (DatumType Any)
                   -> m CardanoTx
 balanceExternalTx params walletUTXO changeAddress lookups cons = do
-    unbalancedTx@(UnbalancedCardanoTx cbt _) <- throwEither (mkUnbalancedTxError lookups cons) $ mkTxWithParams params lookups cons
+    unbalancedTx@(UnbalancedCardanoTx cbt _) <- either (throwM . mkUnbalancedTxError lookups cons) pure $ mkTxWithParams params lookups cons
     utxoIndex                 <- UtxoIndex <$> toCardanoUtxo params (slTxOutputs lookups)
     cAddress                  <- throwEither (NonBabbageEraChangeAddress changeAddress) $ toCardanoAddressInEra (pNetworkId params) changeAddress
     walletUTXOIndex           <- toCardanoUtxo params walletUTXO

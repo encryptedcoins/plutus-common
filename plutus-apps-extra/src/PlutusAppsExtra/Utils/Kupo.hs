@@ -26,7 +26,7 @@ import           GHC.Generics                  (Generic)
 import           Ledger                        (Address (..), Datum (..), DatumFromQuery (..), DatumHash (..), Language (..),
                                                 NetworkId, Script, ScriptHash (..), Slot (Slot), TxId (..), TxOutRef (..),
                                                 Validator (..), ValidatorHash (..), Versioned (..), fromCardanoValue,
-                                                toCardanoValue)
+                                                toCardanoValue, adaOnlyValue)
 import           Plutus.Script.Utils.Ada       (lovelaceOf, toValue)
 import           Plutus.Script.Utils.Value     (AssetClass (..))
 import           Plutus.V1.Ledger.Api          (Credential (..), CurrencySymbol (..), StakingCredential (..), TokenName,
@@ -94,15 +94,15 @@ instance MkPattern TxOutRef where
 ----------------------------------------------- FromJSON instances -----------------------------------------------
 
 data KupoResponse = KupoResponse
-    { krTxId :: TxId
-    , krOutputIndex :: Integer
-    , krAddress :: Address
-    , krValue :: C.Value
-    , krDatumHash :: Maybe DatumHash
-    , krDatumType :: Maybe KupoDatumType
-    , krScriptHash :: Maybe ScriptHash
-    , krCreatedAt :: SlotWithHeaderHash
-    , krSpentAt :: Maybe SlotWithHeaderHash
+    { krTxId        :: !TxId
+    , krOutputIndex :: !Integer
+    , krAddress     :: !Address
+    , krValue       :: !C.Value
+    , krDatumHash   :: !(Maybe DatumHash)
+    , krDatumType   :: !(Maybe KupoDatumType)
+    , krScriptHash  :: !(Maybe ScriptHash)
+    , krCreatedAt   :: !SlotWithHeaderHash
+    , krSpentAt     :: !(Maybe SlotWithHeaderHash)
     } deriving (Show, Eq, Generic)
 
 data KupoDatumType = KupoDatumHash | KupoDatumInline
@@ -153,7 +153,7 @@ kupoResponseToJSON networkId KupoResponse{..} = J.object
     , "spent_at"      .= krSpentAt
     , "value"         .= J.Object
         [ "coins"     .= toInteger (C.selectLovelace krValue)
-        , "assets"    .= J.fromList (flip fmap (flattenValue (fromCardanoValue krValue)) 
+        , "assets"    .= J.fromList (flip fmap (flattenValue (fromCardanoValue krValue))
             $ \(cs, tn, amt) -> (Data.Aeson.Key.fromText $ encodeHex $ fromBuiltin $ unCurrencySymbol cs <> unTokenName tn, amt))
         ]
     ]
@@ -210,6 +210,25 @@ instance FromJSON (Kupo C.Value) where
                         cs'     <- CurrencySymbol <$> toBbs cs
                         pure [(cs', PMap.singleton "" amount')]
             toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex . T.pack
+
+data GetHealthResponse = GetHealthResponse
+    { ghrConnected            :: Bool
+    , ghrMostRecentCheckpoint :: Integer
+    , ghrMostRecentNodeTip    :: Integer
+    } deriving (Show, Generic)
+
+instance FromJSON GetHealthResponse where
+    parseJSON = withObject "GetHealthResponse" $ \o -> do
+        ghrConnected <- o .: "connection_status" >>= \case
+            J.String "connected"    -> pure True
+            J.String "disconnected" -> pure False
+            val                     -> fail $ show val
+        ghrMostRecentCheckpoint <- o .: "most_recent_checkpoint"
+        ghrMostRecentNodeTip    <- o .: "most_recent_node_tip"
+        pure GetHealthResponse{..}
+
+filterCleanKupoResponses :: [KupoResponse] -> [KupoResponse]
+filterCleanKupoResponses = filter $ (\v -> adaOnlyValue v == v) . krValue
 
 -------------------------------------------- ToHttpApiData instances --------------------------------------------
 

@@ -1,80 +1,136 @@
-{-# LANGUAGE AllowAmbiguousTypes  #-}
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE ViewPatterns         #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE ViewPatterns      #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant <&>" #-}
 
 module PlutusAppsExtra.IO.Blockfrost where
 
-import           Cardano.Api                      (NetworkId (..), NetworkMagic (..), StakeAddress, TxId, makeStakeAddress)
+import           Cardano.Api                      (NetworkId (..), StakeAddress, makeStakeAddress)
 import           Cardano.Api.Shelley              (PoolId)
 import           Control.Applicative              ((<|>))
-import           Control.Exception                (throw)
-import           Control.Lens                     ((^.))
+import           Control.Lens                     (preview, (.~), (^.))
 import           Control.Lens.Tuple               (Field3 (_3))
 import           Control.Monad                    (foldM)
-import           Control.Monad.Catch              (Exception (..), MonadThrow (..))
 import           Control.Monad.IO.Class           (MonadIO (..))
 import           Control.Monad.Trans.Maybe        (MaybeT (..))
-import           Data.Aeson                       (eitherDecodeFileStrict)
-import           Data.Data                        (Proxy (..))
+import           Data.Either                      (isRight, rights)
 import           Data.Foldable                    (find)
 import           Data.Functor                     ((<&>))
 import           Data.List                        (intersect, (\\))
-import           Data.Maybe                       (listToMaybe)
-import           Data.Text                        (Text)
-import           Ledger                           (Address, StakePubKeyHash (..))
-import           Network.HTTP.Client              (HttpException (..), newManager)
-import           Network.HTTP.Client.TLS          (tlsManagerSettings)
-import           Plutus.Script.Utils.Value        (AssetClass (..), CurrencySymbol, TokenName)
+import qualified Data.Map                         as Map
+import           Data.Maybe                       (fromMaybe, listToMaybe, mapMaybe)
+import qualified Data.Set                         as Set
+import           Ledger                           (Address (..), Datum (..), DatumFromQuery (..), DatumHash, DecoratedTxOut (..),
+                                                   Script, ScriptHash, StakePubKeyHash (..), TxId (..), TxOutRef (..), Validator,
+                                                   ValidatorHash, Versioned, decoratedTxOutDatum, decoratedTxOutReferenceScript,
+                                                   decoratedTxOutValidator, decoratedTxOutValidatorHash, fromCardanoValue)
+import           Plutus.Script.Utils.Value        (CurrencySymbol, TokenName)
+import           Plutus.V1.Ledger.Api             (Credential (..), ToData (..))
 import qualified Plutus.V1.Ledger.Value           as P
-import           PlutusAppsExtra.Types.Error      (BlockfrostError (UnknownNetworkMagic), ConnectionError (..))
-import           PlutusAppsExtra.Utils.Address    (spkhToStakeCredential)
-import           PlutusAppsExtra.Utils.Blockfrost (AccDelegationHistoryResponse (..), AssetHistoryResponse, AssetTxsResponse (..),
-                                                   Bf (..), BfOrder (..), TxDelegationsCertsResponse, TxUTxoResponseOutput (..),
-                                                   TxUtxoResponse (..), TxUtxoResponseInput (..))
-import           Servant.API                      (Capture, Get, Header, JSON, QueryParam, (:<|>) ((:<|>)), (:>))
-import           Servant.Client                   (BaseUrl (..), ClientM, Scheme (..), client, mkClientEnv, runClientM)
-import qualified Servant.Client                   as Servant
+import qualified PlutusAppsExtra.Api.Blockfrost   as Api
+import           PlutusAppsExtra.Types.Tx         (UtxoRequirement (..), UtxoRequirements)
+import           PlutusAppsExtra.Utils.Address    (bech32ToAddress, spkhToStakeCredential)
+import           PlutusAppsExtra.Utils.Blockfrost (AccDelegationHistoryResponse (..), AssetAddressesResponse (..),
+                                                   AssetTxsResponse (..), BfOrder (..), TxUtxoResponse (..),
+                                                   TxUtxoResponseInput (..), TxUtxoResponseOutput (..), AssetHistoryResponse)
+import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
+import           PlutusAppsExtra.Utils.Datum      (hashDatum)
+import qualified PlutusAppsExtra.Utils.Datum      as Datum
+import           PlutusAppsExtra.Utils.Servant    (handle404Maybe)
 
-tokenFilePath :: FilePath
-tokenFilePath = "blockfrost.token"
-
-portBf :: Int
-portBf = 80
+----------------------------------------------------------- Hi-level API -----------------------------------------------------------
 
 getAddressFromStakePubKeyHash :: NetworkId -> PoolId -> StakePubKeyHash -> IO (Maybe Address)
 getAddressFromStakePubKeyHash network poolId spkh = runMaybeT $ do
-    history <- MaybeT $ sequence $ getAccountDelegationHistory network . makeStakeAddress network <$> spkhToStakeCredential spkh
+    history <- MaybeT $ sequence $ Api.getAccountDelegationHistory network . makeStakeAddress network <$> spkhToStakeCredential spkh
     txHash  <- MaybeT $ pure $ adhrTxHash <$> find ((== poolId) . adhrPoolId) history
-    MaybeT $ fmap turiAddress . listToMaybe . turInputs <$> getTxUtxo network txHash
+    MaybeT $ fmap turiAddress . listToMaybe . turInputs <$> Api.getTxUtxo network txHash
 
 getStakeAddressLastPool :: NetworkId -> StakeAddress -> IO (Maybe PoolId)
-getStakeAddressLastPool network stakeAddr = fmap adhrPoolId . listToMaybe <$> getAccountDelegationHistory network stakeAddr
+getStakeAddressLastPool network stakeAddr = fmap adhrPoolId . listToMaybe <$> Api.getAccountDelegationHistory network stakeAddr
 
 getAddressFromStakeAddress :: NetworkId -> StakeAddress -> IO (Maybe Address)
 getAddressFromStakeAddress network stakeAddr = do
-    txId <- fmap adhrTxHash . listToMaybe <$> getAccountDelegationHistory network stakeAddr
-    maybe (pure Nothing) (fmap (fmap turiAddress . listToMaybe . turInputs) . getTxUtxo network) txId
+    txId <- fmap adhrTxHash . listToMaybe <$> Api.getAccountDelegationHistory network stakeAddr
+    maybe (pure Nothing) (fmap (fmap turiAddress . listToMaybe . turInputs) . Api.getTxUtxo network) txId
 
--- find tx id where address have minted specific amount of asset
+getAccountAssociatedAddresses :: NetworkId -> StakePubKeyHash -> IO (Maybe [Address])
+getAccountAssociatedAddresses network spkh = case makeStakeAddress network <$> spkhToStakeCredential spkh of
+    Just sa -> Just . mapMaybe bech32ToAddress <$> foldPages (Api.getAccountAssociatedAddresses network sa)
+    Nothing -> pure Nothing
+
+getAssetAddressess :: NetworkId -> CurrencySymbol -> TokenName -> IO [(Address, Integer)]
+getAssetAddressess network cs name = fmap (map $ \AssetAddressesResponse{..} -> (adrAddress, adrQuantity))
+    $ foldPages $ Api.getAssetAddresses network cs name Nothing
+
+getAssetHistory :: NetworkId -> CurrencySymbol -> TokenName -> IO [AssetHistoryResponse]
+getAssetHistory network cs name = foldPages $ Api.getAssetHistory network cs name Nothing
+
+getAssetTxs :: NetworkId -> CurrencySymbol -> TokenName -> IO [AssetTxsResponse]
+getAssetTxs network cs name = foldPages $ Api.getAssetTxs network cs name Nothing
+
+getTxUtxo :: NetworkId -> UtxoRequirements -> TxId -> IO MapUTXO
+getTxUtxo network reqs txId = Api.getTxUtxo network txId >>= mkEvaluatedMapUtxo network reqs
+
+-------------------------------------------------------- Get by hash  --------------------------------------------------------
+
+getDatumByHash :: NetworkId -> DatumHash -> IO (Maybe Datum)
+getDatumByHash network = handle404Maybe . Api.getDatumByHashUnsafe network
+
+getScriptByHash :: NetworkId -> ScriptHash -> IO (Maybe (Versioned Script))
+getScriptByHash network = handle404Maybe . Api.getScriptByHashUnsafe network
+
+getValidatorByHash :: NetworkId -> ValidatorHash -> IO (Maybe (Versioned Validator))
+getValidatorByHash network = handle404Maybe . Api.getValidatorByHashUnsafe network
+
+-------------------------------------------- Iterative monitoring (delegated txs)  --------------------------------------------
+
+-- Get ids of txs with asset of the specified policy
+-- If txId is passed as the last argument - function will stop after ecnountering this txId
+-- This function is useful when you need to iteratively monitor txs related to specific asset
+getAllAssetTxsAfterTxId :: NetworkId -> CurrencySymbol -> TokenName -> Maybe TxId -> IO [TxId]
+getAllAssetTxsAfterTxId network cs name mbTxId = takeAssetTxsWhile network cs name (Just Desc) pure predicate
+    where
+        predicate txId = if Just txId == mbTxId then Left txId else Right txId
+
+-- Apply function to txId list to get txs while predicate(either) holds
+takeAssetTxsWhile ::  NetworkId -> CurrencySymbol -> TokenName -> Maybe BfOrder -> (TxId -> IO a) -> (a -> Either l r) -> IO [r]
+takeAssetTxsWhile network cs name mbOrder getTxInfo predicate = rights <$> takeAssetTxsWhileWithResult network cs name mbOrder getTxInfo predicate
+
+-- Apply function to txId list to get txs while predicate(either) holds, with save of first failed result
+takeAssetTxsWhileWithResult :: NetworkId -> CurrencySymbol -> TokenName -> Maybe BfOrder -> (TxId -> IO a) -> (a -> Either l r) -> IO [Either l r]
+takeAssetTxsWhileWithResult network cs name mbOrder getTxInfo predicate = concat <$> foldPagesWhile 1
+    where
+        foldPagesWhile page = Api.getAssetTxs network cs name mbOrder page >>= \case
+            [] -> pure []
+            txs -> checkTxsWhile (atrTxHash <$> txs) >>= \case
+                [] -> pure []
+                is -> if all isRight is then (is :) <$> foldPagesWhile (page + 1) else pure [is]
+        checkTxsWhile = \case
+            []     -> pure []
+            i:is -> getTxInfo i <&> predicate >>= \case
+                Right r -> (Right r :) <$> checkTxsWhile is
+                Left  l -> pure [Left l]
+
+--------------------------------------------------- Encoins distribution  ---------------------------------------------------
+
 verifyAsset :: NetworkId -> CurrencySymbol -> TokenName -> Integer -> Address -> IO (Maybe TxId)
 verifyAsset network cs token amount addr = do
     history <- getAssetTxs network cs token
-    foldM (\res (atrTxHash -> txId) -> (res <|>) <$> (getTxUtxo network txId <&> findOutput txId . turOutputs)) Nothing history
+    foldM (\res (atrTxHash -> txId) -> (res <|>) <$> (Api.getTxUtxo network txId <&> findOutput txId . turOutputs)) Nothing history
     where
-        findOutput txId outs = const (Just txId) =<< find (\o -> turoAddress o == addr && P.valueOf (turoAmount o) cs token == amount) outs
+        findOutput txId outs = const (Just txId) =<< find (\o -> turoAddress o == addr && P.valueOf (fromCardanoValue $ turoAmount o) cs token == amount) outs
 
-verifyAssetFast 
+verifyAssetFast
     :: NetworkId
     -> CurrencySymbol
     -> TokenName
     -> [(Address, Integer)]
     -> Maybe ([(Address, Integer, TxId)] -> IO ()) -- Function to save intermidiate results
-    -> [(Address, Integer, Cardano.Api.TxId)]      -- Already verified addresses
-    -> IO [Either Address (Address, Integer, Cardano.Api.TxId)]
+    -> [(Address, Integer, TxId)]      -- Already verified addresses
+    -> IO [Either Address (Address, Integer, TxId)]
 verifyAssetFast network cs token recepients saveIntermidiate verified = do
         history <- getAssetTxs network cs token
         go recepients $ filter ((`notElem` map (^. _3) verified) . atrTxHash) history
@@ -85,89 +141,71 @@ verifyAssetFast network cs token recepients saveIntermidiate verified = do
         -- end of token history
         go rs [] = pure $ map (Left . fst) rs
         go rs ((atrTxHash -> txId) : hs) = do
-            pairs <- map (\o -> (turoAddress o, P.valueOf (turoAmount o) cs token)) . turOutputs <$> getTxUtxo network txId
+            pairs <- map (\o -> (turoAddress o, P.valueOf (fromCardanoValue $ turoAmount o) cs token)) . turOutputs <$> Api.getTxUtxo network txId
             let res = map (\(a,b) -> (a,b,txId)) $ pairs `intersect` rs
                 currentCounter = total - length rs
             liftIO $ maybe (pure ()) ($ res) saveIntermidiate
             liftIO $ putStrLn $ show currentCounter <> "/" <> show total
             (map Right res <>) <$> go (rs \\ pairs) hs
 
---------------------------------------------------- Blockfrost API ---------------------------------------------------
+--------------------------------------------------- Helpers  ---------------------------------------------------
 
-getTxUtxo :: NetworkId -> TxId -> IO TxUtxoResponse
-getTxUtxo network txId = getFromEndpointBF network $ withBfToken $ \t -> getBfTxUtxo t $ Bf txId
-
-getAccountDelegationHistory :: NetworkId -> StakeAddress -> IO [AccDelegationHistoryResponse]
-getAccountDelegationHistory network addr = getFromEndpointBF network $ withBfToken $ \t -> 
-        getBfAccDelegationHistory t (Bf addr) (Just Desc)
-
-getAssetTxs :: NetworkId -> CurrencySymbol -> TokenName -> IO [AssetTxsResponse]
-getAssetTxs network cs name = go 1
-    where go n = do
-            res <- getFromEndpointBF network $ withBfToken $ \t -> getBfAssetTxs t (Bf $ AssetClass (cs, name)) (Just n)
+foldPages :: (Int -> IO [a]) -> IO [a]
+foldPages getWithPage = go 1
+    where go page = do
+            res <- getWithPage page
             case res of
                 [] -> pure []
-                xs -> (xs <>) <$> go (n + 1)
+                xs -> (xs <>) <$> go (page + 1)
 
-getAssetHistory :: NetworkId -> CurrencySymbol -> TokenName -> IO [AssetHistoryResponse]
-getAssetHistory network cs name = getFromEndpointBF network $ withBfToken $ \t -> getBfAssetHistory t (Bf $ AssetClass (cs, name))
+mkEvaluatedMapUtxo :: NetworkId -> UtxoRequirements -> TxUtxoResponse -> IO MapUTXO
+mkEvaluatedMapUtxo network reqs resp =  Map.fromList . mapMaybe sequence . zip (unspentTxOutRefs resp) <$>
+    mapM (mkEvaluatedDecoratedTxOut network reqs) (turOutputs resp)
 
-type BfToken = Maybe Text
-
-withBfToken :: (BfToken -> ClientM a) -> ClientM a
-withBfToken ma = liftIO (eitherDecodeFileStrict tokenFilePath) >>= either error (ma . Just)
-
-getFromEndpointBF :: NetworkId -> ClientM a -> IO a
-getFromEndpointBF network endpoint = do
-    manager <- liftIO $ newManager tlsManagerSettings
-    responseOrError <- liftIO $ runClientM
-        endpoint
-        (mkClientEnv manager (BaseUrl Http ("cardano-" <> bfNetwork <> ".blockfrost.io")  portBf ""))
-    case responseOrError of
-        Left (Servant.ConnectionError (fromException -> Just (HttpExceptionRequest r c)))
-                       -> throwM (ConnectionError r c)
-        Left err       -> throwM err
-        Right response -> pure response
+mkEvaluatedDecoratedTxOut :: NetworkId -> UtxoRequirements -> TxUtxoResponseOutput -> IO (Maybe DecoratedTxOut)
+mkEvaluatedDecoratedTxOut network reqs TxUtxoResponseOutput{..} = sequence $ mkUnevaluatedDecoratedTxOut TxUtxoResponseOutput{..} <&> \txOut -> do
+        fd <- evaluateWhen RequiresDatum     evaluateDatum      $ turoDatumHash <|> hashDatum  <$> turoInlineDatum
+        fs <- evaluateWhen RequiresScript    evaluateScript      turoReferenceScriptHash
+        fv <- evaluateWhen RequiresValidator evaluateValidator $ preview decoratedTxOutValidatorHash txOut
+        pure $ fd . fs . fv $ txOut
     where
-        bfNetwork = case network of
-            Mainnet                  -> "mainnet"
-            Testnet (NetworkMagic 1) -> "preprod"
-            Testnet (NetworkMagic 2) -> "preview"
-            Testnet m                -> throw $ UnknownNetworkMagic m
+        evaluateWhen :: UtxoRequirement -> (v -> IO (DecoratedTxOut -> DecoratedTxOut)) -> Maybe v -> IO (DecoratedTxOut -> DecoratedTxOut)
+        evaluateWhen req f mbV = case (req `Set.member` reqs, mbV) of
+            (True, Just v) -> f v
+            _              -> pure id
 
-type BlockfrostAPI = "api" :> "v0" :>
-    (    GetAccDelegationHistory
-    :<|> GetTxDelegationCerts
-    :<|> GetTxUtxo
-    :<|> GetAssetTxs
-    :<|> GetAssetHistory
-    )
+        evaluateDatum dh = do
+            dfq <- case (dh == Datum.unitHash, turoInlineDatum) of
+                (_   , Just iDat) -> pure $ DatumInline iDat
+                (True,         _) -> pure $ DatumInBody $ Datum $ toBuiltinData ()
+                _                 -> maybe DatumUnknown DatumInBody <$> getDatumByHash network dh
+            pure (decoratedTxOutDatum .~ (dh, dfq))
 
-type Auth = Header "project_id" Text
+        evaluateScript sh = do
+            script <- getScriptByHash network sh
+            pure (decoratedTxOutReferenceScript .~ script)
 
-type GetAccDelegationHistory
-    = Auth :> "accounts" :> Capture "Stake address" (Bf StakeAddress) :> "delegations" :> QueryParam "order" BfOrder :> Get '[JSON] [AccDelegationHistoryResponse]
-type GetTxDelegationCerts
-    = Auth :> "txs" :> Capture "Tx hash" (Bf TxId) :> "delegations" :> Get '[JSON] TxDelegationsCertsResponse
-type GetTxUtxo
-    = Auth :> "txs" :> Capture "Tx hash" (Bf TxId) :> "utxos" :> Get '[JSON] TxUtxoResponse
-type GetAssetTxs
-    = Auth :> "assets" :> Capture "Policy id" (Bf AssetClass) :> "transactions" :> QueryParam "page" Int :> Get '[JSON] [AssetTxsResponse]
-type GetAssetHistory
-    = Auth :> "assets" :> Capture "Policy id" (Bf AssetClass) :> "history" :> Get '[JSON] [AssetHistoryResponse]
+        evaluateValidator vh = do
+            validator <- getValidatorByHash network vh
+            pure (decoratedTxOutValidator .~ validator)
 
-getBfAccDelegationHistory :: BfToken -> Bf StakeAddress -> Maybe BfOrder -> ClientM [AccDelegationHistoryResponse]
-getBfTxDelegationCerts    :: BfToken -> Bf TxId                          -> ClientM TxDelegationsCertsResponse
-getBfTxUtxo               :: BfToken -> Bf TxId                          -> ClientM TxUtxoResponse
-getBfAssetTxs             :: BfToken -> Bf AssetClass   -> Maybe Int     -> ClientM [AssetTxsResponse]
-getBfAssetHistory         :: BfToken -> Bf AssetClass                    -> ClientM [AssetHistoryResponse]
+unspentTxOutRefs :: TxUtxoResponse -> [TxOutRef]
+unspentTxOutRefs TxUtxoResponse{..} = TxOutRef turTxHash . turoIdx <$> turOutputs
 
-(getBfAccDelegationHistory, getBfTxDelegationCerts, getBfTxUtxo, getBfAssetTxs, getBfAssetHistory)
-    = (getBfAccDelegationHistory_, getBfTxDelegationCerts_, getBfTxUtxo_, getBfAssetTxs_, getBfAssetHistory_)
+mkUnevaluatedDecoratedTxOut :: TxUtxoResponseOutput -> Maybe DecoratedTxOut
+mkUnevaluatedDecoratedTxOut TxUtxoResponseOutput{..} =
+    let _decoratedTxOutStakingCredential = addressStakingCredential turoAddress
+        _decoratedTxOutValue             = turoAmount
+        _decoratedTxOutPubKeyDatum       = dat
+        _decoratedTxOutReferenceScript   = Nothing
+        _decoratedTxOutValidator         = Nothing
+    in case addressCredential turoAddress of
+        PubKeyCredential _decoratedTxOutPubKeyHash    -> pure PublicKeyDecoratedTxOut{..}
+        ScriptCredential _decoratedTxOutValidatorHash -> do
+            _decoratedTxOutScriptDatum <- _decoratedTxOutPubKeyDatum
+            pure ScriptDecoratedTxOut{..}
     where
-        getBfAccDelegationHistory_
-            :<|> getBfTxDelegationCerts_
-            :<|> getBfTxUtxo_
-            :<|> getBfAssetTxs_
-            :<|> getBfAssetHistory_ = do
-                client (Proxy @BlockfrostAPI)
+        dat = case (turoInlineDatum, turoDatumHash == Just Datum.unitHash) of
+            (Just inlineDatum, _   ) -> Just (fromMaybe (hashDatum inlineDatum) turoDatumHash, DatumInline inlineDatum)
+            (_               , True) -> Just (Datum.unitHash, DatumUnknown)
+            _                        -> Nothing

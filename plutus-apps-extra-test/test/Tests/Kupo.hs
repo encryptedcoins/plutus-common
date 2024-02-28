@@ -6,9 +6,11 @@ import           Data.Function                        (on)
 import           Data.Maybe                           (fromJust)
 import           Data.Text                            (Text)
 import           Ledger                               (Address, DecoratedTxOut (..), TxId (..), TxOutRef (..))
-import           Plutus.V1.Ledger.Api                 (toBuiltin, CurrencySymbol (CurrencySymbol), TokenName (TokenName))
+import           Plutus.V1.Ledger.Api                 (CurrencySymbol (CurrencySymbol), TokenName (TokenName), toBuiltin)
+import qualified PlutusAppsExtra.Api.Kupo             as Kupo
 import qualified PlutusAppsExtra.IO.ChainIndex.Kupo   as Kupo
 import qualified PlutusAppsExtra.IO.ChainIndex.Plutus as Plutus
+import           PlutusAppsExtra.Types.Tx             (allRequirements)
 import           PlutusAppsExtra.Utils.Address        (bech32ToAddress)
 import qualified Text.Hex                             as T
 
@@ -18,15 +20,15 @@ getUtxosAt bech32 = do
     res' <- Plutus.getUtxosAt addr
     putStrLn "\nChainIndex:\n"
     mapM_ print res'
-    res <- Kupo.getUtxosAt addr
+    res <- Kupo.getUtxosAt allRequirements addr
     putStrLn "\nKupo:\n"
     mapM_ print res
     putStrLn "\nSame res:\n"
     print $ res == res'
 
 unspentTxOutFromRef :: TxOutRef -> IO ()
-unspentTxOutFromRef ref = do 
-    res <- Kupo.getUnspentTxOutFromRef ref
+unspentTxOutFromRef ref = do
+    res <- Kupo.getUnspentTxOutFromRef allRequirements ref
     res' <- Plutus.getUnspentTxOutFromRef ref
     putStrLn "\nKupo:\n"
     print res
