@@ -16,8 +16,8 @@
 module PlutusAppsExtra.IO.Wallet.Internal where
 
 import qualified Cardano.Address                                    as Address
-import           Cardano.Address.Derivation                         (Depth (..), GenMasterKey (..),
-                                                                     HardDerivation (..), XPrv, indexFromWord32, toXPub)
+import           Cardano.Address.Derivation                         (Depth (..), GenMasterKey (..), HardDerivation (..), XPrv,
+                                                                     indexFromWord32, toXPub)
 import           Cardano.Address.Style.Shelley                      (Credential (..))
 import qualified Cardano.Address.Style.Shelley                      as S
 import           Cardano.Api                                        (NetworkId (..), StakeAddress)
@@ -27,6 +27,7 @@ import           Cardano.Wallet.Primitive.AddressDerivation.Shelley (generateKey
 import           Cardano.Wallet.Primitive.Passphrase                (Passphrase (..), currentPassphraseScheme, preparePassphrase)
 import           Cardano.Wallet.Primitive.Types                     (WalletId (WalletId))
 import           Control.Exception                                  (Exception)
+import           Control.FromSum                                    (maybeToEither)
 import           Control.Lens                                       ((<&>))
 import           Control.Monad.Catch                                (MonadThrow (..))
 import           Control.Monad.IO.Class                             (MonadIO (..))
@@ -43,7 +44,6 @@ import           PlutusAppsExtra.Types.Error                        (WalletError
 import           PlutusAppsExtra.Utils.Address                      (bech32ToAddress, getStakeKey, stakeAddressToBech32,
                                                                      stakeKeyToStakeAddress)
 import           PlutusAppsExtra.Utils.Network                      (HasNetworkId (..))
-import Control.FromSum (maybeToEither)
 
 ------------------------------------------- Hi-level API -------------------------------------------
 

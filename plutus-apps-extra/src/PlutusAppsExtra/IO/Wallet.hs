@@ -1,32 +1,50 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLists       #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 
-module PlutusAppsExtra.IO.Wallet where
+module PlutusAppsExtra.IO.Wallet
+    ( WalletProvider (..)
+    , HasWalletProvider (..)
+    , getWalletKeyHashes
+    , genPrvKey
+    , genPubKey
+    , getWalletValue
+    , getWalletAda
+    , getWalletRefs
+    , getWalletUtxos
+    , mkSignature
+    , Internal.HasWallet (..)
+    , Internal.RestoredWallet (..)
+    , Internal.restoreWalletFromFile
+    , Internal.WalletKeys (..)
+    , Internal.getWalletKeys
+    , Internal.getPassphrase
+    , Internal.getWalletId
+    ) where
 
 import           Cardano.Address.Derivation             (XPrv)
 import qualified Cardano.Wallet.Primitive.Passphrase    as Caradano
 import           Cardano.Wallet.Primitive.Types.Address (AddressState (..))
 import           Control.Lens                           ((<&>))
 import           Control.Monad.Catch                    (MonadThrow (..))
-import           Control.Monad.Extra                    (concatMapM)
-import           Data.Aeson                             (FromJSON, ToJSON)
+import           Control.Monad.Extra                    (MonadPlus (mzero), concatMapM)
+import           Data.Aeson                             (FromJSON (..))
+import qualified Data.Aeson                             as J
 import qualified Data.ByteArray                         as BA
 import qualified Data.ByteString                        as BS
 import           Data.List.NonEmpty                     (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty                     as NonEmpty
 import qualified Data.Map                               as Map
-import           GHC.Generics                           (Generic)
+import qualified Data.Vector                            as Vector
 import           Ledger                                 (Address, Passphrase (..), PubKey, PubKeyHash, Signature, StakingCredential, TxId,
                                                          TxOutRef, decoratedTxOutPlutusValue, generateFromSeed, toPublicKey)
 import           Ledger.Crypto                          (signTx)
@@ -36,15 +54,27 @@ import qualified Plutus.V2.Ledger.Api                   as P
 import           PlutusAppsExtra.IO.ChainIndex          (HasChainIndexProvider, getRefsAt, getUtxosAt)
 import qualified PlutusAppsExtra.IO.Wallet.Cardano      as Cardano
 import           PlutusAppsExtra.IO.Wallet.Internal     (HasWallet (getRestoredWallet), RestoredWallet (..))
+import qualified PlutusAppsExtra.IO.Wallet.Internal     as Internal
 import           PlutusAppsExtra.Types.Error            (WalletError (..))
 import           PlutusAppsExtra.Types.Tx               (UtxoRequirements)
-import           PlutusAppsExtra.Utils.Address          (addressToKeyHashes)
+import           PlutusAppsExtra.Utils.Address          (addressToKeyHashes, bech32ToAddress)
 import           PlutusAppsExtra.Utils.ChainIndex       (MapUTXO)
 import           Prelude                                hiding ((-))
 import           System.Random                          (genByteString, getStdGen)
+import Control.Monad (when)
 
 data WalletProvider = Cardano | Lightweight (NonEmpty Address)
-    deriving (Show, Eq, Generic, FromJSON, ToJSON)
+    deriving (Show, Eq)
+
+instance FromJSON WalletProvider where
+    parseJSON = \case
+        J.String "Cardano"            -> pure Cardano
+        J.Object [("tag", "Cardano")] -> pure Cardano
+        J.Object [("addresses", J.Array arr), ("tag", "Lightweight")] -> do
+            when (null arr) $ fail "Empty address list."
+            Lightweight . NonEmpty.fromList . Vector.toList <$>
+                mapM (J.withText "address" (maybe (fail "addressFromBech32") pure . bech32ToAddress)) arr
+        _                                                             -> mzero
 
 class (HasWallet m) => HasWalletProvider m where
 

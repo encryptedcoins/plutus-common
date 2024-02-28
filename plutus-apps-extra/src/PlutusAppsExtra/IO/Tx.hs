@@ -37,8 +37,7 @@ import           PlutusAppsExtra.Constraints.Balance (balanceExternalTx)
 import           PlutusAppsExtra.IO.ChainIndex       (HasChainIndexProvider)
 import qualified PlutusAppsExtra.IO.Tx.Cardano       as Cardano
 import qualified PlutusAppsExtra.IO.Tx.Maestro       as Maestro
-import           PlutusAppsExtra.IO.Wallet           (HasWalletProvider (..), getWalletUtxos)
-import           PlutusAppsExtra.IO.Wallet.Internal  (getWalletKeys, wkPaymentKey)
+import           PlutusAppsExtra.IO.Wallet           (HasWalletProvider (..), getWalletKeys, getWalletUtxos, wkPaymentKey)
 import           PlutusAppsExtra.Utils.ChainIndex    (MapUTXO)
 import           PlutusTx.IsData                     (FromData, ToData)
 import           PlutusTx.Prelude                    (zero, (-))

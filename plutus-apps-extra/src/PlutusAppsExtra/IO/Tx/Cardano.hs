@@ -34,8 +34,8 @@ import           PlutusTx.IsData                         (FromData, ToData)
 import           Prelude                                 hiding ((-))
 
 import           Ledger.Tx.Constraints                   (ScriptLookups, TxConstraints, mkTxWithParams)
+import           PlutusAppsExtra.IO.Wallet               (HasWallet, getPassphrase, getWalletId)
 import           PlutusAppsExtra.IO.Wallet.Cardano       (getFromEndpointWallet)
-import           PlutusAppsExtra.IO.Wallet.Internal      (HasWallet, getPassphrase, getWalletId)
 import           PlutusAppsExtra.Types.Error             (MkTxError (..), mkUnbuildableUnbalancedTxError, throwEither, throwMaybe)
 import           PlutusAppsExtra.Utils.Tx                (apiSerializedTxToCardanoTx, cardanoTxToSealedTx)
 

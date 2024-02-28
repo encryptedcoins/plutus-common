@@ -146,4 +146,5 @@ library
       prettyprinter                          -any,
       QuickCheck                             -any,
       uuid                                   -any,
+      vector                                 -any,
     hs-source-dirs: src
