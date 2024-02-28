@@ -99,16 +99,16 @@ getValidatorByHashUnsafe vh = getFromEndpointBFWithToken $ \t -> client (Proxy @
 ------------------------------------------------------------- Helpers -------------------------------------------------------------
 
 class (HasNetworkId m, MonadCatch m, MonadIO m) => MonadBlockfrost m where
-    getBfToken :: m BfToken
+    getBlockfrostToken :: m BlockfrostToken
 
 type ApiPrefix = "api/v0"
 
 type Auth = Header "project_id" Text
 
-type BfToken = Maybe Text
+type BlockfrostToken = Maybe Text
 
-getFromEndpointBFWithToken :: MonadBlockfrost m => (BfToken -> ClientM a) -> m a
-getFromEndpointBFWithToken endpoint = getBfToken >>= getFromEndpointBF . endpoint
+getFromEndpointBFWithToken :: MonadBlockfrost m => (BlockfrostToken -> ClientM a) -> m a
+getFromEndpointBFWithToken endpoint = getBlockfrostToken >>= getFromEndpointBF . endpoint
 
 getFromEndpointBF :: MonadBlockfrost m => ClientM a -> m a
 getFromEndpointBF endpoint = do
