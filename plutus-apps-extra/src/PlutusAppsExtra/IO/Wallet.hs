@@ -35,6 +35,7 @@ import           Cardano.Address.Derivation             (XPrv)
 import qualified Cardano.Wallet.Primitive.Passphrase    as Caradano
 import           Cardano.Wallet.Primitive.Types.Address (AddressState (..))
 import           Control.Lens                           ((<&>))
+import           Control.Monad                          (when)
 import           Control.Monad.Catch                    (MonadThrow (..))
 import           Control.Monad.Extra                    (MonadPlus (mzero), concatMapM)
 import           Data.Aeson                             (FromJSON (..))
@@ -61,7 +62,6 @@ import           PlutusAppsExtra.Utils.Address          (addressToKeyHashes, bec
 import           PlutusAppsExtra.Utils.ChainIndex       (MapUTXO)
 import           Prelude                                hiding ((-))
 import           System.Random                          (genByteString, getStdGen)
-import Control.Monad (when)
 
 data WalletProvider = Cardano | Lightweight (NonEmpty Address)
     deriving (Show, Eq)

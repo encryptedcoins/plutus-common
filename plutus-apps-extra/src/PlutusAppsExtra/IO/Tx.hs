@@ -43,7 +43,7 @@ import           PlutusTx.IsData                     (FromData, ToData)
 import           PlutusTx.Prelude                    (zero, (-))
 import           Prelude                             hiding ((-))
 
-data TxProvider = Cardano | Lightweight
+data TxProvider = Cardano | Maestro
     deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
@@ -52,14 +52,14 @@ class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
 
     signTx :: CardanoTx -> m CardanoTx
     signTx ctx = getTxProvider >>= \case
-        Cardano     -> Cardano.signTx ctx
-        Lightweight -> flip Ledger.addCardanoTxSignature ctx <$> (getKey .  wkPaymentKey <$> getWalletKeys)
+        Cardano -> Cardano.signTx ctx
+        Maestro -> flip Ledger.addCardanoTxSignature ctx <$> (getKey .  wkPaymentKey <$> getWalletKeys)
 
     balanceTx :: (FromData (DatumType Any), ToData (DatumType Any), ToData (RedeemerType Any), Show (DatumType Any),
         Show (RedeemerType Any)) => Params -> ScriptLookups Any -> TxConstraints (RedeemerType Any) (DatumType Any) -> m CardanoTx
     balanceTx params lookups cons = getTxProvider >>= \case
-        Cardano     -> Cardano.balanceTx params lookups cons
-        Lightweight -> do
+        Cardano -> Cardano.balanceTx params lookups cons
+        Maestro -> do
             changeAddress <- getWalletAddr
             walletUTXO <- getWalletUtxos mempty
             balanceExternalTx params walletUTXO changeAddress lookups cons
@@ -67,14 +67,14 @@ class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
     submitTx :: CardanoTx -> m ()
     default submitTx :: MonadMaestro m => CardanoTx -> m ()
     submitTx ctx = getTxProvider >>= \case
-       Cardano     -> Cardano.submitTx ctx
-       Lightweight -> void $ Maestro.submitTx ctx
+       Cardano -> Cardano.submitTx ctx
+       Maestro -> void $ Maestro.submitTx ctx
 
     awaitTxConfirmed :: CardanoTx -> m ()
     default awaitTxConfirmed :: MonadMaestro m => CardanoTx -> m ()
     awaitTxConfirmed ctx = getTxProvider >>= \case
-       Cardano     -> Cardano.awaitTxConfirmed ctx
-       Lightweight -> Maestro.awaitTxConfirmed ctx
+       Cardano -> Cardano.awaitTxConfirmed ctx
+       Maestro -> Maestro.awaitTxConfirmed ctx
 
 -- Send a balanced transaction to Cardano Wallet Backend and wait until transaction is confirmed or declined
 submitTxConfirmed :: HasTxProvider m => CardanoTx -> m ()
