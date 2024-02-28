@@ -10,8 +10,8 @@ import           Control.Monad.State                  (MonadIO (..), StateT, eva
 import           Data.Either                          (isRight)
 import qualified Data.Map                             as Map
 import           Data.Maybe                           (fromJust, isNothing, listToMaybe, mapMaybe)
-import           Ledger                               (Address (..), CardanoTx (..), DecoratedTxOut (..), TxOutRef (..),
-                                                       adaValueOf, toCardanoValue)
+import           Ledger                               (Address (..), CardanoTx (..), DecoratedTxOut (..), TxOutRef (..), adaValueOf,
+                                                       toCardanoValue)
 import           Plutus.V1.Ledger.Api                 (Credential (..))
 import qualified Plutus.V2.Ledger.Api                 as P
 import           PlutusAppsExtra.Constraints.Balance  (balanceExternalTx)
@@ -19,12 +19,11 @@ import           PlutusAppsExtra.Constraints.OffChain (useAsCollateralTx')
 import           PlutusAppsExtra.IO.Time              (currentTime)
 import           PlutusAppsExtra.Test.Utils.Gen       (genTxOutRef)
 import           PlutusAppsExtra.Types.Error          (BalanceExternalTxError)
-import           PlutusAppsExtra.Types.Tx             (TransactionBuilder, TxConstructor (..), buildTxConstraints,
-                                                       mkTxConstructor)
+import           PlutusAppsExtra.Types.Tx             (TransactionBuilder, TxConstructor (..), buildTxConstraints, mkTxConstructor)
 import           PlutusAppsExtra.Utils.ChainIndex     (MapUTXO)
 import           PlutusAppsExtra.Utils.Datum          (inlinedUnitInTxOut)
 import           Test.Hspec                           (Expectation, expectationFailure, shouldSatisfy)
-import Test.QuickCheck (generate)
+import           Test.QuickCheck                      (generate)
 
 type TxTestM a = StateT TxTestState IO a
 
