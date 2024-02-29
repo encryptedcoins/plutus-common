@@ -35,7 +35,6 @@ source-repository-package
   subdir:
     cardano-node-emulator
     cardano-streaming
-    doc
     freer-extras
     marconi-chain-index
     marconi-core
@@ -48,10 +47,8 @@ source-repository-package
     plutus-e2e-tests
     plutus-ledger
     plutus-pab
-    plutus-pab-executables
     plutus-script-utils
     plutus-tx-constraints
-    plutus-use-cases
 
 -- We never, ever, want this.
 write-ghc-environment-files: never
