@@ -1,281 +1,131 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NumericUnderscores    #-}
+{-# LANGUAGE OverloadedLists       #-}
 {-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 
-module PlutusAppsExtra.IO.Wallet where
+module PlutusAppsExtra.IO.Wallet
+    ( WalletProvider (..)
+    , HasWalletProvider (..)
+    , getWalletKeyHashes
+    , genPrvKey
+    , genPubKey
+    , getWalletValue
+    , getWalletAda
+    , getWalletRefs
+    , getWalletUtxos
+    , mkSignature
+    , Internal.HasWallet (..)
+    , Internal.RestoredWallet (..)
+    , Internal.restoreWalletFromFile
+    , Internal.WalletKeys (..)
+    , Internal.getWalletKeys
+    , Internal.getPassphrase
+    , Internal.getWalletId
+    ) where
 
-import           Cardano.Mnemonic                                   (MkSomeMnemonic (..), SomeMnemonic)
-import           Cardano.Node.Emulator                              (Params)
-import qualified Cardano.Wallet.Api.Client                          as Client
-import           Cardano.Wallet.Api.Types                           (ApiSerialisedTransaction (..),
-                                                                     ApiSignTransactionPostData (ApiSignTransactionPostData),
-                                                                     ApiT (..), ApiTxId (..), ApiWallet, ApiNetworkInformation)
-import           Cardano.Wallet.Api.Types.SchemaMetadata            (TxMetadataSchema (..))
-import           Cardano.Wallet.LocalClient.ExportTx                (export)
-import           Cardano.Wallet.Primitive.AddressDerivation         (WalletKey (digest, publicKey))
-import           Cardano.Wallet.Primitive.AddressDerivation.Shelley (generateKeyFromSeed)
-import           Cardano.Wallet.Primitive.Passphrase                (Passphrase (..), currentPassphraseScheme, preparePassphrase)
-import           Cardano.Wallet.Primitive.Types                     (WalletId (WalletId))
-import           Cardano.Wallet.Primitive.Types.Address             (AddressState (..))
-import           Control.Concurrent                                 (threadDelay)
-import           Control.Lens                                       ((<&>), (^.), (^?))
-import           Control.Monad                                      (unless, void)
-import           Control.Monad.Catch                                (MonadThrow (..))
-import           Control.Monad.Extra                                (concatMapM)
-import           Control.Monad.IO.Class                             (MonadIO (..))
-import           Data.Aeson                                         (FromJSON (..), ToJSON (..), eitherDecode, withObject, (.:))
-import           Data.Aeson.Lens                                    (_String, key)
-import qualified Data.ByteString.Lazy                               as LB
-import           Data.Coerce                                        (coerce)
-import qualified Data.Map                                           as Map
-import           Data.Maybe                                         (mapMaybe)
-import           Data.String                                        (IsString (..))
-import           Data.Text                                          (Text)
-import qualified Data.Text                                          as T
-import           Data.Text.Class                                    (FromText (fromText))
-import           Data.Void                                          (Void)
-import           GHC.Generics                                       (Generic)
-import           Ledger                                             (Address, CardanoTx (..), DecoratedTxOut (..),
-                                                                     PaymentPubKeyHash (PaymentPubKeyHash), PubKeyHash,
-                                                                     StakingCredential, TxOutRef, _decoratedTxOutAddress,
-                                                                     decoratedTxOutPlutusValue, fromCardanoValue,
-                                                                     getCardanoTxOutputs, toPlutusAddress, txOutAddress,
-                                                                     txOutValue)
-import           Ledger.Tx                                          (getCardanoTxId)
-import           Ledger.Tx.CardanoAPI                               (unspentOutputsTx)
-import           Ledger.Typed.Scripts                               (ValidatorTypes (..))
-import           Network.HTTP.Client                                (HttpExceptionContent, Request)
-import           Plutus.Script.Utils.Value                          (leq)
-import           PlutusAppsExtra.IO.ChainIndex                      (HasChainIndex (..), getRefsAt, getUtxosAt)
-import           PlutusTx.IsData                                    (FromData, ToData)
-import           PlutusTx.Prelude                                   (zero, (-))
-import           Prelude                                            hiding ((-))
+import           Cardano.Address.Derivation             (XPrv)
+import qualified Cardano.Wallet.Primitive.Passphrase    as Caradano
+import           Cardano.Wallet.Primitive.Types.Address (AddressState (..))
+import           Control.Lens                           ((<&>))
+import           Control.Monad                          (when)
+import           Control.Monad.Catch                    (MonadThrow (..))
+import           Control.Monad.Extra                    (MonadPlus (mzero), concatMapM)
+import           Data.Aeson                             (FromJSON (..))
+import qualified Data.Aeson                             as J
+import qualified Data.ByteArray                         as BA
+import qualified Data.ByteString                        as BS
+import           Data.List.NonEmpty                     (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty                     as NonEmpty
+import qualified Data.Map                               as Map
+import qualified Data.Vector                            as Vector
+import           Ledger                                 (Address, Passphrase (..), PubKey, PubKeyHash, Signature, StakingCredential, TxId,
+                                                         TxOutRef, decoratedTxOutPlutusValue, generateFromSeed, toPublicKey)
+import           Ledger.Crypto                          (signTx)
+import qualified Plutus.Script.Utils.Ada                as Ada
+import qualified Plutus.Script.Utils.Ada                as P
+import qualified Plutus.V2.Ledger.Api                   as P
+import           PlutusAppsExtra.IO.ChainIndex          (HasChainIndexProvider, getRefsAt, getUtxosAt)
+import qualified PlutusAppsExtra.IO.Wallet.Cardano      as Cardano
+import           PlutusAppsExtra.IO.Wallet.Internal     (HasWallet (getRestoredWallet), RestoredWallet (..))
+import qualified PlutusAppsExtra.IO.Wallet.Internal     as Internal
+import           PlutusAppsExtra.Types.Error            (WalletError (..))
+import           PlutusAppsExtra.Types.Tx               (UtxoRequirements)
+import           PlutusAppsExtra.Utils.Address          (addressToKeyHashes, bech32ToAddress)
+import           PlutusAppsExtra.Utils.ChainIndex       (MapUTXO)
+import           Prelude                                hiding ((-))
+import           System.Random                          (genByteString, getStdGen)
 
-import           Ledger.Tx.Constraints                              (ScriptLookups, TxConstraints, mkTxWithParams,
-                                                                     mustPayToPubKey, mustPayToPubKeyAddress)
-import qualified Plutus.Script.Utils.Ada                            as Ada
-import qualified Plutus.Script.Utils.Ada                            as P
-import qualified Plutus.V2.Ledger.Api                               as P
-import           PlutusAppsExtra.Types.Error                        (ConnectionError, MkTxError (..), WalletError (..),
-                                                                     mkUnbuildableUnbalancedTxError, throwEither, throwMaybe)
-import           PlutusAppsExtra.Types.Tx                           (UtxoRequirements)
-import           PlutusAppsExtra.Utils.Address                      (addressToKeyHashes, bech32ToAddress)
-import           PlutusAppsExtra.Utils.ChainIndex                   (MapUTXO)
-import           PlutusAppsExtra.Utils.Servant                      (Endpoint, getFromEndpointOnPort,
-                                                                     pattern ConnectionErrorOnPort)
-import           PlutusAppsExtra.Utils.Tx                           (apiSerializedTxToCardanoTx, cardanoTxToSealedTx)
+data WalletProvider = Cardano | Lightweight (NonEmpty Address)
+    deriving (Show, Eq)
 
-------------------------------------------- Restore-wallet -------------------------------------------
+instance FromJSON WalletProvider where
+    parseJSON = \case
+        J.String "Cardano"            -> pure Cardano
+        J.Object [("tag", "Cardano")] -> pure Cardano
+        J.Object [("addresses", J.Array arr), ("tag", "Lightweight")] -> do
+            when (null arr) $ fail "Empty address list."
+            Lightweight . NonEmpty.fromList . Vector.toList <$>
+                mapM (J.withText "address" (maybe (fail "addressFromBech32") pure . bech32ToAddress)) arr
+        _                                                             -> mzero
 
-class (Monad m, MonadIO m, MonadThrow m) => HasWallet m where
-    getRestoredWallet :: m RestoredWallet
+class (HasWallet m) => HasWalletProvider m where
 
-data RestoredWallet = RestoredWallet
-    { name             :: Text
-    , mnemonicSentence :: SomeMnemonic
-    , passphrase       :: Passphrase "user"
-    } deriving (Show, Eq, Generic)
+    getWalletProvider :: m WalletProvider
 
-instance FromJSON RestoredWallet where
-    parseJSON = withObject "Restore wallet" $ \v -> do
-        let mkMnemonic = either (fail . show) pure . mkSomeMnemonic @'[ 24 ]
-            mkPassphrase = Passphrase . fromString
-        name                   <- v .: "name"
-        mnemonicSentence       <- v .: "mnemonic_sentence" >>= mkMnemonic
-        passphrase             <- v .: "passphrase"        <&> mkPassphrase
-        pure RestoredWallet{..}
+    getWalletAddr :: m Address
+    getWalletAddr = getWalletProvider >>= \case
+        Cardano                 -> Cardano.getWalletAddr
+        Lightweight (addr :| _) -> pure addr
 
-genWalletId :: SomeMnemonic -> Passphrase "user" -> WalletId
-genWalletId mnemonic pp = WalletId $ digest $ publicKey rootXPrv
-  where
-    rootXPrv = generateKeyFromSeed (mnemonic, Nothing) pwdP
-    pwdP = preparePassphrase currentPassphraseScheme pp
+    getWalletAddresses :: m [Address]
+    getWalletAddresses = getWalletProvider >>= \case
+        Cardano           -> Cardano.ownAddresses (Just Used)
+        Lightweight addrs -> pure $ NonEmpty.toList addrs
 
-restoreWalletFromFile :: (MonadIO m, MonadThrow m) => FilePath -> m RestoredWallet
-restoreWalletFromFile fp = liftIO (LB.readFile fp) >>=
-    either (throwM . RestoredWalletParsingError . T.pack) pure . eitherDecode
-
--- Read restore-wallet JSON file and generate walletId from it
-walletIdFromFile :: (MonadIO m, MonadThrow m) => FilePath -> m WalletId
-walletIdFromFile fp = do
-    RestoredWallet{..} <- restoreWalletFromFile fp
-    pure $ genWalletId mnemonicSentence passphrase
-
-getWalletId :: HasWallet m => m WalletId
-getWalletId = do
-    RestoredWallet{..} <- getRestoredWallet
-    pure $ genWalletId mnemonicSentence passphrase
-
-------------------------------------------- Wallet functions -------------------------------------------
-
-getFromEndpointWallet :: Endpoint a
-getFromEndpointWallet = getFromEndpointOnPort 8090
-
-pattern WalletApiConnectionError :: Request -> HttpExceptionContent -> ConnectionError
-pattern WalletApiConnectionError req content <- ConnectionErrorOnPort 8090 req content
-
-getWalletAddrBech32 :: HasWallet m => m Text
-getWalletAddrBech32 = do
-    walletId <- getWalletId
-    getFromEndpointWallet (Client.listAddresses  Client.addressClient (ApiT walletId) (Just $ ApiT Unused)) >>= \case
-        v:_ -> pure $ v ^. key "id"._String
-        _   -> throwM $ WalletIdDoesntHaveAnyAssociatedAddresses walletId
-
-getWalletAddr :: HasWallet m => m Address
-getWalletAddr = do
-    addrWalletBech32 <- getWalletAddrBech32
-    case bech32ToAddress <$> fromText addrWalletBech32 of
-        Right (Just addr) -> pure addr
-        _                 -> throwM $ UnparsableAddress addrWalletBech32
-
-getWalletKeyHashes :: HasWallet m => m (PubKeyHash, Maybe StakingCredential)
+getWalletKeyHashes :: HasWalletProvider m => m (PubKeyHash, Maybe StakingCredential)
 getWalletKeyHashes = do
     addrWallet <- getWalletAddr
     case addressToKeyHashes addrWallet of
         Just hs -> pure hs
         Nothing -> throwM $ AddressDoesntCorrespondToPubKey addrWallet
 
-getWalletFromId :: HasWallet m => WalletId -> m ApiWallet
-getWalletFromId = getFromEndpointWallet . Client.getWallet Client.walletClient . ApiT
+genPrvKey :: HasWallet m => m XPrv
+genPrvKey = do
+    RestoredWallet{..} <- getRestoredWallet
+    g <- getStdGen
+    let (bs, _) = genByteString 2048 g
+        pp = Ledger.Passphrase $ BS.pack $ BA.unpack $ Caradano.unPassphrase passphrase
+    pure $ generateFromSeed bs pp
 
-ownAddresses :: HasWallet m => m [Address]
-ownAddresses = mapMaybe bech32ToAddress <$> ownAddressesBech32 Nothing
-
-ownUsedAddresses :: HasWallet m => m [Address]
-ownUsedAddresses = mapMaybe bech32ToAddress <$> ownAddressesBech32 (Just Used)
-
-ownAddressesBech32 :: HasWallet m => Maybe AddressState -> m [Text]
-ownAddressesBech32 aState = do
-    walletId <- getWalletId
-    as <- getFromEndpointWallet $ Client.listAddresses  Client.addressClient (ApiT walletId) (ApiT <$> aState)
-    pure $ map (^. key "id"._String) as
+genPubKey :: HasWallet m => m PubKey
+genPubKey = toPublicKey <$> genPrvKey
 
 -- Get all value at a wallet
-getWalletValue :: (HasWallet m, HasChainIndex m) => m P.Value
+getWalletValue ::  (HasWalletProvider m, HasChainIndexProvider m) => m P.Value
 getWalletValue = mconcat . fmap decoratedTxOutPlutusValue . Map.elems <$> getWalletUtxos mempty
 
 -- Get all ada at a wallet
-getWalletAda :: (HasWallet m, HasChainIndex m) => m P.Ada
+getWalletAda :: (HasWalletProvider m, HasChainIndexProvider m) => m P.Ada
 getWalletAda = Ada.fromValue <$> getWalletValue
 
-getWalletRefs :: (HasWallet m, HasChainIndex m) => m [TxOutRef]
-getWalletRefs = ownUsedAddresses >>= concatMapM getRefsAt
+getWalletRefs :: (HasWalletProvider m, HasChainIndexProvider m) => m [TxOutRef]
+getWalletRefs = getWalletAddresses >>= concatMapM getRefsAt
 
 -- Get all utxos at a wallet
-getWalletUtxos :: (HasWallet m, HasChainIndex m) => UtxoRequirements -> m MapUTXO
-getWalletUtxos reqs = ownUsedAddresses >>= mapM (getUtxosAt reqs) <&> mconcat
+getWalletUtxos :: (HasWalletProvider m, HasChainIndexProvider m) => UtxoRequirements -> m MapUTXO
+getWalletUtxos reqs = getWalletAddresses >>= mapM (getUtxosAt reqs) <&> mconcat
 
--- Get wallet total profit from a transaction.
-getTxProfit :: HasWallet m => CardanoTx -> MapUTXO -> m P.Value
-getTxProfit tx txUtxos = do
-        addrs <- ownUsedAddresses
-        let txOuts   = Map.elems txUtxos
-            spent    = getTotalValue addrs _decoratedTxOutValue _decoratedTxOutAddress txOuts
-            produced = getTotalValue addrs txOutValue (toPlutusAddress . txOutAddress) $ getCardanoTxOutputs tx
-        pure $ fromCardanoValue produced - fromCardanoValue spent
-    where
-        getTotalValue addrs getValue getAddr = mconcat . map getValue . filter ((`elem` addrs) . getAddr)
-
-isProfitableTx :: HasWallet m => CardanoTx -> MapUTXO -> m Bool
-isProfitableTx tx txUtxos = leq zero <$> getTxProfit tx txUtxos
-
-------------------------------------------- Tx functions -------------------------------------------
-
-signTx :: HasWallet m => CardanoTx -> m CardanoTx
-signTx ctx = do
-    ppUser   <- passphrase <$> getRestoredWallet
-    walletId <- getWalletId
-    asTx     <- sign walletId (coerce ppUser)
-    throwMaybe (ConvertApiSerialisedTxToCardanoTxError asTx) $ apiSerializedTxToCardanoTx asTx
-    where
-        stx = cardanoTxToSealedTx ctx
-        sign walletId pp = getFromEndpointWallet $ Client.signTransaction Client.transactionClient
-            (ApiT walletId)
-            (ApiSignTransactionPostData (ApiT stx) (ApiT pp))
-
-balanceTx ::
-    ( HasWallet m
-    , FromData (DatumType a)
-    , ToData (DatumType a)
-    , ToData (RedeemerType a)
-    , Show (DatumType a)
-    , Show (RedeemerType a)
-    ) =>
-    Params -> ScriptLookups a -> TxConstraints (RedeemerType a) (DatumType a) -> m CardanoTx
-balanceTx params lookups cons = do
-    walletId     <- getWalletId
-    unbalancedTx <- throwEither (mkUnbuildableUnbalancedTxError lookups cons) (mkTxWithParams params lookups cons)
-    exportTx     <- throwEither (UnbuildableExportTx unbalancedTx) $ export params unbalancedTx
-    asTx         <- getFromEndpointWallet $ Client.balanceTransaction Client.transactionClient
-        (ApiT walletId)
-        (toJSON exportTx)
-    throwMaybe (ConvertApiSerialisedTxToCardanoTxError asTx) $ apiSerializedTxToCardanoTx asTx
-
--- Send a balanced transaction to Cardano Wallet Backend and return immediately
-submitTx :: HasWallet m => CardanoTx -> m ()
-submitTx ctx = do
-    let stx = cardanoTxToSealedTx ctx
-    walletId <- getWalletId
-    void $ getFromEndpointWallet $
-        Client.submitTransaction Client.transactionClient
-            (ApiT walletId)
-            (ApiSerialisedTransaction $ ApiT stx)
-
--- Send a balanced transaction to Cardano Wallet Backend and wait until transaction is confirmed or declined
-submitTxConfirmed :: HasWallet m => CardanoTx -> m ()
-submitTxConfirmed ctx = submitTx ctx >> awaitTxConfirmed ctx
-
--- Wait until a transaction is confirmed (added to the ledger).
--- If the transaction is never added to the ledger then 'awaitTxConfirmed' never
--- returns
-awaitTxConfirmed :: HasWallet m => CardanoTx -> m ()
-awaitTxConfirmed ctx = go
-    where
-        go = do
-            walletId <- getWalletId
-            hash <- throwEither (CantExtractHashFromCardanoTx ctx) . fromText . T.pack . show  $ getCardanoTxId ctx
-            res <- getFromEndpointWallet $ Client.getTransaction Client.transactionClient
-                (ApiT walletId)
-                (ApiTxId $ ApiT hash)
-                TxMetadataNoSchema
-            unless (confirmedResponse res) $ liftIO (threadDelay 1_000_000) >> go
-        confirmedResponse res = case res ^? key "status"._String of
-            Just "in_ledger" -> True
-            _                -> False
-
--- Create and submit a transaction that produces a specific number of outputs at the target wallet address
-getWalletTxOutRefs :: HasWallet m => Params -> PubKeyHash -> Maybe StakingCredential -> Int -> m [TxOutRef]
-getWalletTxOutRefs params pkh mbSkc n = do
-    liftIO $ putStrLn "Balancing..."
-    balancedTx <- balanceTx params lookups cons
-    liftIO $ print balancedTx
-    liftIO $ putStrLn "Signing..."
-    signedTx <- signTx balancedTx
-    liftIO $ print signedTx
-    liftIO $ putStrLn "Submitting..."
-    submitTxConfirmed signedTx
-    let refs = Map.keys $ unspentOutputsTx signedTx
-    liftIO $ putStrLn "Submitted!"
-    return refs
-    where
-        lookups = mempty :: ScriptLookups Void
-        cons    = case mbSkc of
-            Just skc -> mconcat $ replicate n $ mustPayToPubKeyAddress (PaymentPubKeyHash pkh) skc $ Ada.lovelaceValueOf 10_000_000
-            Nothing -> mustPayToPubKey (PaymentPubKeyHash pkh) $ Ada.lovelaceValueOf 10_000_000
-
---------------------------------------------- Misc ---------------------------------------------
-
-getHealth :: MonadIO m => m ApiNetworkInformation
-getHealth = getFromEndpointWallet $ Client.networkInformation Client.networkClient
+mkSignature :: HasWallet m => TxId -> m Signature
+mkSignature txId = do
+    RestoredWallet{..} <- getRestoredWallet
+    xPrv <- genPrvKey
+    let pp = Ledger.Passphrase $ BS.pack $ BA.unpack $ Caradano.unPassphrase passphrase
+    pure $ signTx txId xPrv pp

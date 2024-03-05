@@ -4,23 +4,26 @@
 
 module Tests.Blockfrost where
 
-import           Cardano.Api                   (AsType (..), Hash, NetworkId (..), NetworkMagic (..), SerialiseAsRawBytes (..),
-                                                StakeAddress (..), StakeKey, deserialiseFromBech32)
-import           Cardano.Api.Shelley           (PoolId, StakeAddress (..), StakeCredential (..))
-import           Cardano.Ledger.Alonzo.TxInfo  (transKeyHash)
-import qualified Cardano.Ledger.Credential     as Cred
-import           Cardano.Ledger.Crypto         (StandardCrypto)
-import           Cardano.Ledger.Keys           (KeyHash (..))
-import           Data.Maybe                    (fromJust)
-import           Data.String                   (fromString)
-import           Data.Text                     (Text)
-import           Ledger                        (Address, MintingPolicyHash (..), PubKeyHash (..),
-                                                StakePubKeyHash (StakePubKeyHash), TxId, stakePubKeyHashCredential,
-                                                stakingCredential)
-import           Plutus.V1.Ledger.Api          (CurrencySymbol (..), fromBuiltin, toBuiltin)
-import           PlutusAppsExtra.IO.Blockfrost (getAddressFromStakePubKeyHash, verifyAsset)
-import           PlutusAppsExtra.Utils.Address (bech32ToAddress, bech32ToStakeAddress)
-import qualified Text.Hex                      as T
+import           Cardano.Api                    (AsType (..), Hash, NetworkId (..), NetworkMagic (..), SerialiseAsRawBytes (..),
+                                                 StakeAddress (..), StakeKey, deserialiseFromBech32)
+import           Cardano.Api.Shelley            (PoolId, StakeAddress (..), StakeCredential (..))
+import           Cardano.Ledger.Alonzo.TxInfo   (transKeyHash)
+import qualified Cardano.Ledger.Credential      as Cred
+import           Cardano.Ledger.Crypto          (StandardCrypto)
+import           Cardano.Ledger.Keys            (KeyHash (..))
+import           Data.Aeson                     (eitherDecodeFileStrict)
+import           Data.Functor                   ((<&>))
+import           Data.Maybe                     (fromJust)
+import           Data.String                    (fromString)
+import           Data.Text                      (Text)
+import           Ledger                         (Address, MintingPolicyHash (..), PubKeyHash (..), StakePubKeyHash (StakePubKeyHash), TxId,
+                                                 stakePubKeyHashCredential, stakingCredential)
+import           Plutus.V1.Ledger.Api           (CurrencySymbol (..), fromBuiltin, toBuiltin)
+import           PlutusAppsExtra.Api.Blockfrost (MonadBlockfrost (..))
+import           PlutusAppsExtra.IO.Blockfrost  (getAddressFromStakePubKeyHash, verifyAsset)
+import           PlutusAppsExtra.Utils.Address  (bech32ToAddress, bech32ToStakeAddress)
+import           PlutusAppsExtra.Utils.Network  (HasNetworkId (..))
+import qualified Text.Hex                       as T
 
 toStake :: Text -> StakeAddress
 toStake = fromJust . bech32ToStakeAddress
@@ -47,9 +50,15 @@ test1, test2 :: IO ()
 test1 = getAddress stake1 pool1 addr1
 test2 = getAddress stake2 pool2 addr2
 
+instance HasNetworkId IO where
+    getNetworkId = pure $ Testnet (NetworkMagic 1)
+
+instance MonadBlockfrost IO where
+    getBlockfrostToken = eitherDecodeFileStrict "blockfrost.token" <&> either error Just
+
 getAddress :: StakeAddress -> PoolId -> Address -> IO ()
 getAddress (StakeAddress _ s@(Cred.KeyHashObj hash)) pool addr
-    = getAddressFromStakePubKeyHash (Testnet $ NetworkMagic 2) pool (stakeCredToSpkh s) >>= \case
+    = getAddressFromStakePubKeyHash pool (stakeCredToSpkh s) >>= \case
         Just addr' -> if addr == addr' then print True else failedTest addr addr'
     where
         failedTest a a' = print $ "expected:" <> show a <> " got: " <> show a'
@@ -59,7 +68,6 @@ stakeCredToSpkh (Cred.KeyHashObj hash) = StakePubKeyHash $ transKeyHash hash
 
 verifyAssetTest :: IO (Maybe TxId)
 verifyAssetTest = verifyAsset
-    (Testnet $ NetworkMagic 2)
     (CurrencySymbol $ toBuiltin $ fromJust $ T.decodeHex "4cd1187e477d56e419c354f1e4c7997a736dfc5e095a2511aba0f75d")
     ""
     1

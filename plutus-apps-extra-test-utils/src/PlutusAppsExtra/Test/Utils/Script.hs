@@ -26,7 +26,7 @@ testScipt :: Params -> Script -> [Data] -> Expectation
 testScipt p script plutusData = case runScriptVerbose p script plutusData of
     Left err                 -> expectationFailure $ show err
     Right (output, Left err) -> expectationFailure $ show err <> "\nOutput:\n" <> show output
-    Right (_, res)           -> res `shouldSatisfy` isRight 
+    Right (_, res)           -> res `shouldSatisfy` isRight
 
 testMintingPolicy :: (ToData redeemer) => Params -> MintingPolicy -> redeemer -> ScriptContext -> Expectation
 testMintingPolicy p (MintingPolicy mp) red sctx = testScipt p mp [toData red, toData sctx]
@@ -39,11 +39,11 @@ testValidator p (Validator v) dat red sctx = testScipt p v [toData dat, toData r
 runScript :: VerboseMode -> Params -> Script -> [Data] -> Either CostModelApplyError (LogOutput, Either EvaluationError ExBudget)
 runScript v p script plutusData = do
     ctx <- getEvalCtx
-    return $ evaluateScriptCounting 
-        (protocolVersionFromParams p) 
-        v 
-        ctx 
-        (SBS.toShort . LBS.toStrict $ serialise script) 
+    return $ evaluateScriptCounting
+        (protocolVersionFromParams p)
+        v
+        ctx
+        (SBS.toShort . LBS.toStrict $ serialise script)
         plutusData
 
 getEvalCtx :: Either CostModelApplyError EvaluationContext
