@@ -3,6 +3,7 @@
 
 module PlutusAppsExtra.Test.Utils.Tx where
 
+import           Cardano.Api                          (BabbageEra, TxMetadataInEra)
 import           Cardano.Node.Emulator                (Params (..))
 import           Control.Exception                    (try)
 import           Control.Monad                        (when)
@@ -29,8 +30,13 @@ type TxTestM a = StateT TxTestState IO a
 
 type TxTestState = MapUTXO
 
-buildTx :: Params -> Maybe TxOutRef -> Address -> [TransactionBuilder ()] -> TxTestM (Either BalanceExternalTxError CardanoTx)
-buildTx pParams collateral addr txs = get >>= \utxos -> liftIO $ do
+buildTx
+    :: Params
+    -> Maybe TxOutRef
+    -> Address -> [TransactionBuilder ()]
+    -> Maybe (TxMetadataInEra BabbageEra)
+    -> TxTestM (Either BalanceExternalTxError CardanoTx)
+buildTx pParams collateral addr txs mbMeta = get >>= \utxos -> liftIO $ do
     ct <- currentTime
     let constrInit = mkTxConstructor ct utxos
         txs' = map (useAsCollateralTx' collateral >>) txs
@@ -38,7 +44,7 @@ buildTx pParams collateral addr txs = get >>= \utxos -> liftIO $ do
     when (isNothing lookupsAndCons) $ liftIO $ expectationFailure $ "AllConstructorsFailed:\n"
         <> show (concatMap (txConstructorErrors . (`execState` constrInit)) txs')
     let (lookups, cons) = fromJust lookupsAndCons
-    try @BalanceExternalTxError $ balanceExternalTx pParams utxos addr lookups cons
+    try @BalanceExternalTxError $ balanceExternalTx pParams utxos addr lookups cons mbMeta
 
 runTxTest :: TxTestM (Either BalanceExternalTxError CardanoTx) -> Expectation
 runTxTest test = evalStateT test mempty >>= (`shouldSatisfy` isRight)

@@ -16,6 +16,7 @@
 module PlutusAppsExtra.IO.Tx where
 
 import           Cardano.Address.Style.Shelley       (getKey)
+import           Cardano.Api                         (BabbageEra, TxMetadataInEra)
 import           Cardano.Node.Emulator               (Params)
 import           Control.Monad                       (void)
 import           Control.Monad.IO.Class              (MonadIO (..))
@@ -55,14 +56,24 @@ class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
         Cardano -> Cardano.signTx ctx
         Maestro -> flip Ledger.addCardanoTxSignature ctx <$> (getKey .  wkPaymentKey <$> getWalletKeys)
 
-    balanceTx :: (FromData (DatumType Any), ToData (DatumType Any), ToData (RedeemerType Any), Show (DatumType Any),
-        Show (RedeemerType Any)) => Params -> ScriptLookups Any -> TxConstraints (RedeemerType Any) (DatumType Any) -> m CardanoTx
-    balanceTx params lookups cons = getTxProvider >>= \case
-        Cardano -> Cardano.balanceTx params lookups cons
+    balanceTx ::
+        ( FromData (DatumType Any)
+        , ToData (DatumType Any)
+        , ToData (RedeemerType Any)
+        , Show (DatumType Any)
+        , Show (RedeemerType Any)
+        )
+        => Params
+        -> ScriptLookups Any
+        -> TxConstraints (RedeemerType Any) (DatumType Any)
+        -> Maybe (TxMetadataInEra BabbageEra)
+        -> m CardanoTx
+    balanceTx params lookups cons mbMetadata = getTxProvider >>= \case
+        Cardano -> Cardano.balanceTx params lookups cons mbMetadata
         Maestro -> do
             changeAddress <- getWalletAddr
             walletUTXO <- getWalletUtxos mempty
-            balanceExternalTx params walletUTXO changeAddress lookups cons
+            balanceExternalTx params walletUTXO changeAddress lookups cons mbMetadata
 
     submitTx :: CardanoTx -> m ()
     default submitTx :: MonadMaestro m => CardanoTx -> m ()
@@ -98,7 +109,7 @@ isProfitableTx tx txUtxos = leq zero <$> getTxProfit tx txUtxos
 getWalletTxOutRefs :: HasTxProvider m => Params -> PubKeyHash -> Maybe StakingCredential -> Int -> m [TxOutRef]
 getWalletTxOutRefs params pkh mbSkc n = do
     liftIO $ putStrLn "Balancing..."
-    balancedTx <- balanceTx params lookups cons
+    balancedTx <- balanceTx params lookups cons Nothing
     liftIO $ print balancedTx
     liftIO $ putStrLn "Signing..."
     signedTx <- signTx balancedTx

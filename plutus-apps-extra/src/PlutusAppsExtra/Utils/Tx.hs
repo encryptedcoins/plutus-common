@@ -13,9 +13,9 @@ module PlutusAppsExtra.Utils.Tx where
 import qualified Cardano.Api                            as C
 import           Cardano.Api.Byron                      (Tx (ByronTx))
 import           Cardano.Api.Shelley                    (AnyCardanoEra (..), AsType (..), CardanoEra (..), ConsensusMode (..),
-                                                         EraInMode (..), InAnyCardanoEra (..), KeyWitness (..),
-                                                         SerialiseAsCBOR (..), ShelleyBasedEra (..), ToJSON, Tx (..),
-                                                         TxMetadataJsonSchema, metadataFromJson, toEraInMode, toShelleyMetadata)
+                                                         EraInMode (..), InAnyCardanoEra (..), KeyWitness (..), SerialiseAsCBOR (..),
+                                                         ShelleyBasedEra (..), ToJSON, Tx (..), TxMetadataJsonSchema, metadataFromJson,
+                                                         toEraInMode, toShelleyMetadata)
 import           Cardano.Chain.UTxO                     (ATxAux (..))
 import qualified Cardano.Crypto.DSIGN                   as Crypto
 import qualified Cardano.Ledger.Alonzo.Data             as Alonzo
@@ -36,10 +36,11 @@ import           Data.Functor                           ((<&>))
 import qualified Data.Map                               as Map
 import           Data.Maybe.Strict                      (maybeToStrictMaybe)
 import           Data.Text                              (Text)
-import           Ledger                                 (PaymentPubKeyHash (..), PubKey (..), PubKeyHash (..), Signature (..),
-                                                         TxId, TxOut (getTxOut), getCardanoTxProducedOutputs)
+import qualified Data.Text                              as T
+import           Ledger                                 (PaymentPubKeyHash (..), PubKey (..), PubKeyHash (..), Signature (..), TxId,
+                                                         TxOut (getTxOut), getCardanoTxProducedOutputs)
 import           Ledger.Tx                              (CardanoTx (..))
-import           Ledger.Tx.CardanoAPI                   (getRequiredSigners)
+import           Ledger.Tx.CardanoAPI                   (CardanoBuildTx (..), getRequiredSigners)
 import           Ledger.Tx.Constraints                  (UnbalancedTx)
 import           Plutus.V1.Ledger.Bytes                 (bytes, fromBytes)
 import           Plutus.V2.Ledger.Api                   (BuiltinByteString, fromBuiltin, toBuiltin)
@@ -72,15 +73,30 @@ apiSerializedTxToCardanoTx = toSomeTx . toAnyEraTx
 cardanoTxToSealedTx :: CardanoTx -> SealedTx
 cardanoTxToSealedTx (CardanoTx tx _) = sealedTxFromCardano' tx
 
+addMetadataToCardanoBuildTx :: Maybe (C.TxMetadataInEra C.BabbageEra) -> CardanoBuildTx -> CardanoBuildTx
+addMetadataToCardanoBuildTx mbMetadata (CardanoBuildTx txBody)
+    = CardanoBuildTx (txBody{C.txMetadata = fromMaybe C.TxMetadataNone mbMetadata})
+
+mkJsonMetadataNoSchema :: ToJSON a => a -> Either C.TxMetadataJsonError (C.TxMetadataInEra C.BabbageEra)
+mkJsonMetadataNoSchema = mkJsonMetadata C.TxMetadataJsonNoSchema
+
+mkJsonMetadataDetailedSchema :: ToJSON a => a -> Either C.TxMetadataJsonError (C.TxMetadataInEra C.BabbageEra)
+mkJsonMetadataDetailedSchema = mkJsonMetadata C.TxMetadataJsonDetailedSchema
+
+mkJsonMetadata :: ToJSON a => TxMetadataJsonSchema -> a -> Either C.TxMetadataJsonError (C.TxMetadataInEra C.BabbageEra)
+mkJsonMetadata schema val = C.TxMetadataInEra C.TxMetadataInBabbageEra <$> metadataFromJson schema (toJSON val)
+
+-- addMetadataToCardanoTx turned out to be useless due to the fact that adding the metadata must occur
+-- before balancing the transaction. So it can be deleted in future.
 addMetadataToCardanoTx :: (MonadThrow m, ToJSON a) => CardanoTx -> Maybe a -> TxMetadataJsonSchema -> m CardanoTx
 addMetadataToCardanoTx ctx Nothing _ = pure ctx
 addMetadataToCardanoTx ctx (Just val) schema = case metadataFromJson schema (toJSON val) of
-    Left _     -> throwM UnparsableMetadata
+    Left  err  -> throwM $ UnparsableMetadata $ T.pack $ show err
     Right meta -> pure $ addMetadataToCardanoTx' ctx meta
 
 addMetadataToCardanoTx'  :: CardanoTx -> C.TxMetadata -> CardanoTx
 
-addMetadataToCardanoTx' (CardanoTx (ByronTx (ATxAux tx wit _)) eraInMode) (C.TxMetadata meta) 
+addMetadataToCardanoTx' (CardanoTx (ByronTx (ATxAux tx wit _)) eraInMode) (C.TxMetadata meta)
     = CardanoTx (ByronTx (ATxAux tx wit (serialiseToCBOR $ C.TxMetadata meta))) eraInMode
 
 addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraShelley Shelley.Tx{..}) eraInMode) (C.TxMetadata meta)
