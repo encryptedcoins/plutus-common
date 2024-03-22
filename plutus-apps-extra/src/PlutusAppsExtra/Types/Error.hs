@@ -27,8 +27,8 @@ import           Ledger.Tx.Constraints          (ScriptLookups (..), TxConstrain
 import qualified Ledger.Tx.Constraints.OffChain as Ledger
 import           Network.HTTP.Client            (HttpExceptionContent, Request)
 import qualified Plutus.V2.Ledger.Api           as P
-import           Prelude
 import           PlutusAppsExtra.IO.Tx.Internal (TxState)
+import           Prelude
 
 data ConnectionError = ConnectionError Request HttpExceptionContent
     deriving (Show, Exception)
@@ -54,7 +54,7 @@ data MkTxError
     | UnbuildableExportTx UnbalancedTx
     | UnbuildableUnbalancedTx Text Text
     -- ^ UnbuildableUnbalancedTx has text representation of tx lookups and constraints because they dont have Eq and JSON instances.
-    | UnparsableMetadata
+    | UnparsableMetadata Text
     deriving (Show, Exception, Eq, Generic, FromJSON, ToJSON)
 
 mkUnbuildableUnbalancedTxError :: (Show c1, Show c2) => ScriptLookups l -> TxConstraints c1 c2 -> MkTxError

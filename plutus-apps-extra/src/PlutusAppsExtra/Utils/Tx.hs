@@ -5,46 +5,36 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TypeFamilies          #-}
 
 module PlutusAppsExtra.Utils.Tx where
 
 import qualified Cardano.Api                            as C
-import           Cardano.Api.Byron                      (Tx (ByronTx))
 import           Cardano.Api.Shelley                    (AnyCardanoEra (..), AsType (..), CardanoEra (..), ConsensusMode (..),
-                                                         EraInMode (..), InAnyCardanoEra (..), KeyWitness (..),
-                                                         SerialiseAsCBOR (..), ShelleyBasedEra (..), ToJSON, Tx (..),
-                                                         TxMetadataJsonSchema, metadataFromJson, toEraInMode, toShelleyMetadata)
-import           Cardano.Chain.UTxO                     (ATxAux (..))
+                                                         EraInMode (..), InAnyCardanoEra (..), KeyWitness (..), SerialiseAsCBOR (..),
+                                                         ShelleyBasedEra (..), ToJSON, Tx (..), TxMetadataJsonSchema, metadataFromJson,
+                                                         toEraInMode)
 import qualified Cardano.Crypto.DSIGN                   as Crypto
-import qualified Cardano.Ledger.Alonzo.Data             as Alonzo
-import qualified Cardano.Ledger.Alonzo.Tx               as Alonzo
-import           Cardano.Ledger.Babbage.Tx              (ValidatedTx (ValidatedTx))
 import           Cardano.Ledger.Shelley.API             (VKey (VKey), WitVKey (WitVKey))
-import qualified Cardano.Ledger.Shelley.API.Types       as Shelley
-import qualified Cardano.Ledger.ShelleyMA.AuxiliaryData as Allegra
 import           Cardano.Node.Emulator.Params           (Params)
 import           Cardano.Wallet.Api.Types               (ApiSerialisedTransaction (..), getApiT)
 import           Cardano.Wallet.LocalClient.ExportTx    (ExportTx (..), export)
 import           Cardano.Wallet.Primitive.Types.Tx      (SealedTx, cardanoTxIdeallyNoLaterThan, sealedTxFromCardano')
 import           Control.FromSum                        (eitherToMaybe, fromMaybe)
-import           Control.Monad.Catch                    (MonadThrow (throwM))
 import           Data.Aeson                             (ToJSON (..))
 import           Data.Aeson.Extras                      (encodeByteString, tryDecode)
 import           Data.Functor                           ((<&>))
 import qualified Data.Map                               as Map
-import           Data.Maybe.Strict                      (maybeToStrictMaybe)
 import           Data.Text                              (Text)
-import           Ledger                                 (PaymentPubKeyHash (..), PubKey (..), PubKeyHash (..), Signature (..),
-                                                         TxId, TxOut (getTxOut), getCardanoTxProducedOutputs)
+import           Ledger                                 (PaymentPubKeyHash (..), PubKey (..), PubKeyHash (..), Signature (..), TxId,
+                                                         TxOut (getTxOut), getCardanoTxProducedOutputs)
 import           Ledger.Tx                              (CardanoTx (..))
-import           Ledger.Tx.CardanoAPI                   (getRequiredSigners)
+import           Ledger.Tx.CardanoAPI                   (CardanoBuildTx (..), getRequiredSigners)
 import           Ledger.Tx.Constraints                  (UnbalancedTx)
 import           Plutus.V1.Ledger.Bytes                 (bytes, fromBytes)
 import           Plutus.V2.Ledger.Api                   (BuiltinByteString, fromBuiltin, toBuiltin)
 import           PlutusAppsExtra.IO.ChainIndex.Plutus   (getTxFromId)
-import           PlutusAppsExtra.Types.Error            (MkTxError (..))
 import           Text.Hex                               (decodeHex)
 
 ------------------------ Export/Import of transactions -------------------------
@@ -72,38 +62,23 @@ apiSerializedTxToCardanoTx = toSomeTx . toAnyEraTx
 cardanoTxToSealedTx :: CardanoTx -> SealedTx
 cardanoTxToSealedTx (CardanoTx tx _) = sealedTxFromCardano' tx
 
-addMetadataToCardanoTx :: (MonadThrow m, ToJSON a) => CardanoTx -> Maybe a -> TxMetadataJsonSchema -> m CardanoTx
-addMetadataToCardanoTx ctx Nothing _ = pure ctx
-addMetadataToCardanoTx ctx (Just val) schema = case metadataFromJson schema (toJSON val) of
-    Left _     -> throwM UnparsableMetadata
-    Right meta -> pure $ addMetadataToCardanoTx' ctx meta
+------------------------ Metadata -------------------------
 
-addMetadataToCardanoTx'  :: CardanoTx -> C.TxMetadata -> CardanoTx
+addMetadataToCardanoBuildTx :: Maybe (C.TxMetadataInEra C.BabbageEra) -> CardanoBuildTx -> CardanoBuildTx
+addMetadataToCardanoBuildTx mbMetadata (CardanoBuildTx txBody)
+    = CardanoBuildTx (txBody{C.txMetadata = fromMaybe C.TxMetadataNone mbMetadata})
 
-addMetadataToCardanoTx' (CardanoTx (ByronTx (ATxAux tx wit _)) eraInMode) (C.TxMetadata meta) 
-    = CardanoTx (ByronTx (ATxAux tx wit (serialiseToCBOR $ C.TxMetadata meta))) eraInMode
+mkCip20Metadata :: [Text] -> Either C.TxMetadataJsonError (C.TxMetadataInEra C.BabbageEra)
+mkCip20Metadata msgs = mkJsonMetadataNoSchema (Map.fromList [("674" :: Text, Map.fromList [("msg" :: Text, msgs)])])
 
-addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraShelley Shelley.Tx{..}) eraInMode) (C.TxMetadata meta)
-    = let metadataShelley = maybeToStrictMaybe $ Just $ Shelley.Metadata $ toShelleyMetadata meta
-      in CardanoTx (ShelleyTx C.ShelleyBasedEraShelley (Shelley.Tx{auxiliaryData = metadataShelley, ..})) eraInMode
+mkJsonMetadataNoSchema :: ToJSON a => a -> Either C.TxMetadataJsonError (C.TxMetadataInEra C.BabbageEra)
+mkJsonMetadataNoSchema = mkJsonMetadata C.TxMetadataJsonNoSchema
 
-addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraAllegra Shelley.Tx{..}) eraInMode) (C.TxMetadata meta)
-    = let meta' = toShelleyMetadata meta
-          metadataAllegra = auxiliaryData <&> \(Allegra.AuxiliaryData a s) -> Allegra.AuxiliaryData (a <> meta') s
-      in CardanoTx (ShelleyTx C.ShelleyBasedEraAllegra (Shelley.Tx{auxiliaryData = metadataAllegra, ..})) eraInMode
+mkJsonMetadataDetailedSchema :: ToJSON a => a -> Either C.TxMetadataJsonError (C.TxMetadataInEra C.BabbageEra)
+mkJsonMetadataDetailedSchema = mkJsonMetadata C.TxMetadataJsonDetailedSchema
 
-addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraMary Shelley.Tx{..}) eraInMode) (C.TxMetadata meta)
-    = let meta' = toShelleyMetadata meta
-          metadataMarry = auxiliaryData <&> \(Allegra.AuxiliaryData a s) -> Allegra.AuxiliaryData (a <> meta') s
-      in CardanoTx (ShelleyTx C.ShelleyBasedEraMary (Shelley.Tx{auxiliaryData = metadataMarry, ..})) eraInMode
-
-addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraAlonzo ValidatedTx{..}) eraInMode) (C.TxMetadata meta)
-    = let metadataAlonzo = auxiliaryData <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta, ..}
-      in CardanoTx (ShelleyTx C.ShelleyBasedEraAlonzo (ValidatedTx{Alonzo.auxiliaryData = metadataAlonzo, ..})) eraInMode
-
-addMetadataToCardanoTx' (CardanoTx (ShelleyTx ShelleyBasedEraBabbage ValidatedTx{..}) eraInMode) (C.TxMetadata meta)
-    = let metadataBabbage = auxiliaryData <&> \Alonzo.AuxiliaryData{..} -> Alonzo.AuxiliaryData{txMD = toShelleyMetadata meta, ..}
-      in CardanoTx (ShelleyTx C.ShelleyBasedEraBabbage (ValidatedTx{Alonzo.auxiliaryData = metadataBabbage, ..})) eraInMode
+mkJsonMetadata :: ToJSON a => TxMetadataJsonSchema -> a -> Either C.TxMetadataJsonError (C.TxMetadataInEra C.BabbageEra)
+mkJsonMetadata schema val = C.TxMetadataInEra C.TxMetadataInBabbageEra <$> metadataFromJson schema (toJSON val)
 
 ------------------------ External keys and signatures -------------------------
 
