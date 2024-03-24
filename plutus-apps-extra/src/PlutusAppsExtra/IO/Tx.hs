@@ -16,6 +16,7 @@
 module PlutusAppsExtra.IO.Tx where
 
 import           Cardano.Address.Style.Shelley       (getKey)
+import           Cardano.Api                         (NetworkId)
 import           Cardano.Node.Emulator               (Params)
 import           Control.Monad                       (void)
 import           Control.Monad.IO.Class              (MonadIO (..))
@@ -75,6 +76,12 @@ class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
     awaitTxConfirmed ctx = getTxProvider >>= \case
        Cardano -> Cardano.awaitTxConfirmed ctx
        Maestro -> Maestro.awaitTxConfirmed ctx
+
+-- Send a balanced transaction to local cardano node
+sumbitTxToNodeLocal :: HasTxProvider m => FilePath -> NetworkId -> CardanoTx -> m ()
+sumbitTxToNodeLocal fp networkId ctx = getTxProvider >>= \case
+        Cardano -> sumbitTxToNodeLocal fp networkId ctx
+        _       -> submitTx ctx
 
 -- Send a balanced transaction to Cardano Wallet Backend and wait until transaction is confirmed or declined
 submitTxConfirmed :: HasTxProvider m => CardanoTx -> m ()
