@@ -16,7 +16,7 @@
 module PlutusAppsExtra.IO.Tx where
 
 import           Cardano.Address.Style.Shelley       (getKey)
-import           Cardano.Api                         (BabbageEra, TxMetadataInEra)
+import           Cardano.Api                         (BabbageEra, NetworkId, TxMetadataInEra)
 import           Cardano.Node.Emulator               (Params)
 import           Control.Monad                       (void)
 import           Control.Monad.IO.Class              (MonadIO (..))
