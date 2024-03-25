@@ -1,9 +1,6 @@
 module PlutusAppsExtra
-    (  PlutusAppsExtra.IO.Node.handleConnectionAbscence
-    ,  PlutusAppsExtra.IO.Node.healthCheck
-    ,  PlutusAppsExtra.IO.Node.Metrics
-    ,  PlutusAppsExtra.IO.Node.nodeDiagnosticsPort
+    (  module PlutusAppsExtra.IO.Node
 
     ) where
 
-import qualified PlutusAppsExtra.IO.Node
+import PlutusAppsExtra.IO.Node hiding (sumbitTxToNodeLocal)

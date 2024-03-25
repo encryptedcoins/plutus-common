@@ -69,6 +69,8 @@ library
       PlutusAppsExtra.Utils.Time
       PlutusAppsExtra.Utils.Tx
       PlutusAppsExtra.Utils.Value
+    other-modules:
+      PlutusAppsExtra.IO.Node
     build-depends:
       base                          >= 4.9 && < 5,
       base16-bytestring                      -any,
