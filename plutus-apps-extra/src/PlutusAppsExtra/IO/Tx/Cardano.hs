@@ -33,11 +33,12 @@ import           Ledger.Typed.Scripts                    (ValidatorTypes (..))
 import           PlutusTx.IsData                         (FromData, ToData)
 import           Prelude                                 hiding ((-))
 
-import           Ledger.Tx.Constraints                   (ScriptLookups, TxConstraints, mkTxWithParams)
+import           Cardano.Api                             (BabbageEra, TxMetadataInEra)
+import           Ledger.Tx.Constraints                   (ScriptLookups, TxConstraints, UnbalancedTx (..), mkTxWithParams)
 import           PlutusAppsExtra.IO.Wallet               (HasWallet, getPassphrase, getWalletId)
 import           PlutusAppsExtra.IO.Wallet.Cardano       (getFromEndpointWallet)
 import           PlutusAppsExtra.Types.Error             (MkTxError (..), mkUnbuildableUnbalancedTxError, throwEither, throwMaybe)
-import           PlutusAppsExtra.Utils.Tx                (apiSerializedTxToCardanoTx, cardanoTxToSealedTx)
+import           PlutusAppsExtra.Utils.Tx                (addMetadataToCardanoBuildTx, apiSerializedTxToCardanoTx, cardanoTxToSealedTx)
 
 ------------------------------------------- Tx functions -------------------------------------------
 
@@ -60,16 +61,23 @@ balanceTx ::
     , ToData (RedeemerType a)
     , Show (DatumType a)
     , Show (RedeemerType a)
-    ) =>
-    Params -> ScriptLookups a -> TxConstraints (RedeemerType a) (DatumType a) -> m CardanoTx
-balanceTx params lookups cons = do
+    )
+    => Params
+    -> ScriptLookups a
+    -> TxConstraints (RedeemerType a) (DatumType a)
+    -> Maybe (TxMetadataInEra BabbageEra)
+    -> m CardanoTx
+balanceTx params lookups cons mbMetadata = do
     walletId     <- getWalletId
-    unbalancedTx <- throwEither (mkUnbuildableUnbalancedTxError lookups cons) (mkTxWithParams params lookups cons)
+    unbalancedTx <- setMetadata <$> mkUnbalancedTx
     exportTx     <- throwEither (UnbuildableExportTx unbalancedTx) $ export params unbalancedTx
     asTx         <- getFromEndpointWallet $ Client.balanceTransaction Client.transactionClient
         (ApiT walletId)
         (toJSON exportTx)
     throwMaybe (ConvertApiSerialisedTxToCardanoTxError asTx) $ apiSerializedTxToCardanoTx asTx
+  where
+    mkUnbalancedTx = throwEither (mkUnbuildableUnbalancedTxError lookups cons) (mkTxWithParams params lookups cons)
+    setMetadata (UnbalancedCardanoTx cbTx utxos) = UnbalancedCardanoTx (addMetadataToCardanoBuildTx mbMetadata cbTx) utxos
 
 -- Send a balanced transaction to Cardano Wallet Backend and return immediately
 submitTx :: HasWallet m => CardanoTx -> m ()
