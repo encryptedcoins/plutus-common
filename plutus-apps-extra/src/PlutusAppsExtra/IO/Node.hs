@@ -59,8 +59,8 @@ handleConnectionAbscence = handle $ \e -> case fromException e of
 
 -- Node healthcheck returns ```InternalException Network.Socket.recvBuf: resource vanished (Connection reset by peer)```
 -- so this functions uses node metrics instead
-healthCheck :: IO NoContent
-healthCheck = getFromEndpointOnPort nodeDiagnosticsPort $ Servant.client (Proxy @Metrics)
+nodeHealthCheck :: IO NoContent
+nodeHealthCheck = getFromEndpointOnPort nodeDiagnosticsPort $ Servant.client (Proxy @Metrics)
 
 type Metrics = "metrics" :> Get '[OctetStream] NoContent
 

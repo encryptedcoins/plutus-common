@@ -81,6 +81,7 @@ data WalletError
 data BlockfrostError
     = BlockfrostUnknownNetworkMagic NetworkMagic
     | BlockfrostAddressToBech32Error NetworkId Address
+    | BlockfrostUnserialisableTx CardanoTx
     deriving (Show, Exception)
 
 data MaestroError
