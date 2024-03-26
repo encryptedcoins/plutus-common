@@ -44,6 +44,7 @@ library
       PlutusAppsExtra.IO.Blockfrost
       PlutusAppsExtra.IO.Maestro
       PlutusAppsExtra.IO.Tx
+      PlutusAppsExtra.IO.Tx.Blockfrost
       PlutusAppsExtra.IO.Tx.Cardano
       PlutusAppsExtra.IO.Tx.Internal
       PlutusAppsExtra.IO.Tx.Maestro
