@@ -97,9 +97,6 @@ submitTx :: MonadMaestro m => BS.ByteString -> m TxId
 submitTx txCbor = fmap (fromString . T.unpack) . getFromEndpointMaestroWithToken $ \t ->
         client (Proxy @SumbitTx) t txCbor
 
-type TurboSumbitTx = ApiPrefix :> Auth :>
-    "txmanager" :> "turbosubmit" :> ReqBody '[CBOR] BS.ByteString :> PostAccepted '[PlainText] Text
-
 type ApiPrefix = "v1"
 
 type Auth = Header "api-key" Text
