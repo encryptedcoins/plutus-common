@@ -30,6 +30,7 @@ common lang
 library
     import: lang
     exposed-modules:
+      PlutusAppsExtra
       PlutusAppsExtra.Api.Blockfrost
       PlutusAppsExtra.Api.Kupo
       PlutusAppsExtra.Api.Maestro
@@ -42,7 +43,6 @@ library
       PlutusAppsExtra.IO.ChainIndex.Plutus
       PlutusAppsExtra.IO.Blockfrost
       PlutusAppsExtra.IO.Maestro
-      PlutusAppsExtra.IO.Node
       PlutusAppsExtra.IO.Tx
       PlutusAppsExtra.IO.Tx.Cardano
       PlutusAppsExtra.IO.Tx.Internal
@@ -69,6 +69,8 @@ library
       PlutusAppsExtra.Utils.Time
       PlutusAppsExtra.Utils.Tx
       PlutusAppsExtra.Utils.Value
+    other-modules:
+      PlutusAppsExtra.IO.Node
     build-depends:
       base                          >= 4.9 && < 5,
       base16-bytestring                      -any,

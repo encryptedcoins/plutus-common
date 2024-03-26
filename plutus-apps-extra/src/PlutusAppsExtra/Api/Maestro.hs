@@ -93,8 +93,8 @@ getTxState txId = getFromEndpointMaestroWithToken $ \t ->
 type SumbitTx = ApiPrefix :> Auth :>
     "txmanager" :> ReqBody '[CBOR] BS.ByteString :> PostAccepted '[PlainText] Text
 
-sumbitTx :: MonadMaestro m => BS.ByteString -> m TxId
-sumbitTx txCbor = fmap (fromString . T.unpack) . getFromEndpointMaestroWithToken $ \t ->
+submitTx :: MonadMaestro m => BS.ByteString -> m TxId
+submitTx txCbor = fmap (fromString . T.unpack) . getFromEndpointMaestroWithToken $ \t ->
         client (Proxy @SumbitTx) t txCbor
 
 type ApiPrefix = "v1"
