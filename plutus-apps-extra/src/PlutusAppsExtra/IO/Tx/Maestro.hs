@@ -23,9 +23,12 @@ import           PlutusAppsExtra.Utils.Maestro  (TxStateResponse (..))
 import           PlutusAppsExtra.Utils.Tx       (cardanoTxToText)
 import qualified Text.Hex                       as T
 
--- Send a balanced transaction to Cardano Wallet Backend and return immediately
+-- Send a balanced transaction to Maestro tx manager
 submitTx :: MonadMaestro m => CardanoTx -> m TxId
-submitTx ctx = Maestro.sumbitTx $ fromMaybe (throw $ MaestroUnserialisableTx ctx) $ cardanoTxToText ctx >>= T.decodeHex
+submitTx ctx = Maestro.submitTx $ fromMaybe (throw $ MaestroUnserialisableTx ctx) $ cardanoTxToText ctx >>= T.decodeHex
+
+turboSubmitTx :: MonadMaestro m => CardanoTx -> m TxId
+turboSubmitTx ctx = Maestro.turboSubmitTx $ fromMaybe (throw $ MaestroUnserialisableTx ctx) $ cardanoTxToText ctx >>= T.decodeHex
 
 -- Wait until a transaction is confirmed (added to the ledger).
 -- If the transaction is never added to the ledger then 'awaitTxConfirmed' never

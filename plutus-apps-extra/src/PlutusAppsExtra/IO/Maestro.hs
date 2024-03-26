@@ -11,7 +11,8 @@ module PlutusAppsExtra.IO.Maestro
     , getTxState
     , getUtxosAtAddress
     , getValidatorByHash
-    , Api.sumbitTx
+    , Api.submitTx
+    , Api.turboSubmitTx
     ) where
 
 import           Data.Coerce                   (coerce)
