@@ -260,9 +260,4 @@ instance ToHttpApiData (Maestro TxId) where
 deriving via (Maestro TxId) instance ToHttpApiData (Maestro ScriptHash)
 
 instance ToHttpApiData (Maestro AssetClass) where
-    toUrlPiece (Maestro (AssetClass (CurrencySymbol cs, TokenName token))) = T.encodeHex $ fromBuiltin $ cs <> token
-
-newtype EncodedAssetClass = EncodedAssetClass AssetClass
-
-instance ToHttpApiData EncodedAssetClass where
-    toUrlPiece (EncodedAssetClass (AssetClass (CurrencySymbol cs, TokenName token))) = T.encodeHex (fromBuiltin cs) <> T.decodeUtf8 (fromBuiltin token)
+    toUrlPiece (Maestro (AssetClass (CurrencySymbol cs, TokenName token))) = T.encodeHex (fromBuiltin cs) <> T.decodeUtf8 (fromBuiltin token)

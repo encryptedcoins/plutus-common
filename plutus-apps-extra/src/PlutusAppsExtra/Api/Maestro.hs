@@ -22,7 +22,7 @@ import           Network.HTTP.Client.TLS       (tlsManagerSettings)
 import           Plutus.V1.Ledger.Value        (AssetClass (..), CurrencySymbol, TokenName)
 import           PlutusAppsExtra.Types.Error   (ConnectionError (..), MaestroError (..))
 import           PlutusAppsExtra.Utils.Maestro (AccountAddressesHoldingAssetsResponse, AssetMintsAndBurnsResponse, Cursor,
-                                                EncodedAssetClass (EncodedAssetClass), Maestro (..), ScriptByHashResponse,
+                                                Maestro (..), ScriptByHashResponse,
                                                 TxDetailsResponse (..), TxHistoryResponse (..), TxOutputResponse, TxStateResponse,
                                                 UtxosAtAddressResponse)
 import           PlutusAppsExtra.Utils.Network (HasNetworkId (..))
@@ -48,11 +48,11 @@ getAccountAddressesHoldingAssets cs name cursor = getFromEndpointMaestroWithToke
     client (Proxy @GetAccountAddressesHoldingAssets) t (Maestro $ AssetClass (cs, name)) cursor
 
 type GetAssetMintsAndBurns = ApiPrefix :> Auth :>
-    "assets" :> Capture "Asset" EncodedAssetClass :> "mints" :>  QueryParam "cursor" Cursor :> Get '[JSON] AssetMintsAndBurnsResponse
+    "assets" :> Capture "Asset" (Maestro AssetClass) :> "mints" :>  QueryParam "cursor" Cursor :> Get '[JSON] AssetMintsAndBurnsResponse
 
 getAssetMintsAndBurns :: MonadMaestro m =>  CurrencySymbol -> TokenName -> Maybe Cursor -> m AssetMintsAndBurnsResponse
 getAssetMintsAndBurns cs name cursor = getFromEndpointMaestroWithToken $ \t ->
-    client (Proxy @GetAssetMintsAndBurns) t (EncodedAssetClass $ AssetClass (cs, name)) cursor
+    client (Proxy @GetAssetMintsAndBurns) t (Maestro $ AssetClass (cs, name)) cursor
 
 type GetScriptByHash = ApiPrefix :> Auth :>
     "scripts" :> Capture "Script hash" (Maestro ScriptHash) :> Get '[JSON] ScriptByHashResponse

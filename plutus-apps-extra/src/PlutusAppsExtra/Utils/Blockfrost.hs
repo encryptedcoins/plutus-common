@@ -221,7 +221,7 @@ instance ToHttpApiData (Bf TxId) where
     toUrlPiece = T.dropAround (== '\"') . T.pack . show
 
 instance ToHttpApiData (Bf AssetClass) where
-    toUrlPiece (Bf (AssetClass (CurrencySymbol cs, TokenName token))) = T.encodeHex $ fromBuiltin $ cs <> token
+    toUrlPiece (Bf (AssetClass (CurrencySymbol cs, TokenName token))) = T.encodeHex (fromBuiltin cs) <> T.decodeUtf8 (fromBuiltin token)
 
 instance ToHttpApiData (Bf DatumHash) where
     toUrlPiece = encodeHex . fromBuiltin @BuiltinByteString . coerce
