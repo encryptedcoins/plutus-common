@@ -5,6 +5,10 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE ViewPatterns        #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module PlutusAppsExtra.Api.Blockfrost where
 
@@ -30,6 +34,7 @@ import           PlutusAppsExtra.Utils.Servant    (CBOR)
 import           Servant.API                      (Capture, Get, Header, JSON, PlainText, PostAccepted, QueryParam, ReqBody, (:>))
 import           Servant.Client                   (BaseUrl (..), ClientM, Scheme (..), client, mkClientEnv, runClientM)
 import qualified Servant.Client                   as Servant
+import Control.Monad.Reader (ReaderT (..), asks, MonadReader)
 
 --------------------------------------------------- Blockfrost API ---------------------------------------------------
 
@@ -78,7 +83,7 @@ getAssetHistory cs name order page = getFromEndpointBFWithToken $ \t ->
 type GetAccountAssociatedAddresses = ApiPrefix :> Auth :>
     "accounts" :> Capture "Stake address" (Bf StakeAddress) :> "addresses" :> QueryParam "page" Int :> QueryParam "order" BfOrder :> Get '[JSON] AccountAssociatedAddressesResponse
 
-getAccountAssociatedAddresses :: MonadBlockfrost m =>  StakeAddress -> Int -> m AccountAssociatedAddressesResponse
+getAccountAssociatedAddresses :: MonadBlockfrost m => StakeAddress -> Int -> m AccountAssociatedAddressesResponse
 getAccountAssociatedAddresses addr page = getFromEndpointBFWithToken $ \t ->
     client (Proxy @GetAccountAssociatedAddresses) t (Bf addr) (Just page) (Just Desc)
 
@@ -141,3 +146,15 @@ getFromEndpointBF endpoint = do
 
 portBf :: Int
 portBf = 80
+
+runBfMonad :: NetworkId -> BlockfrostToken -> RunBfMonad a -> IO a
+runBfMonad networkId token = flip runReaderT (networkId, token) . unRunBfMonad
+
+newtype RunBfMonad a = RunBfMonad {unRunBfMonad :: ReaderT (NetworkId, BlockfrostToken) IO a}
+    deriving newtype (Functor, Applicative, Monad, MonadThrow, MonadCatch, MonadIO, MonadReader (NetworkId, BlockfrostToken))
+
+instance HasNetworkId RunBfMonad where
+    getNetworkId = asks fst
+
+instance MonadBlockfrost RunBfMonad where
+    getBlockfrostToken = asks snd

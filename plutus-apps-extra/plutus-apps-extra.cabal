@@ -50,6 +50,7 @@ library
       PlutusAppsExtra.IO.Time
       PlutusAppsExtra.IO.Wallet.Cardano
       PlutusAppsExtra.IO.Wallet.Internal
+      PlutusAppsExtra.IO.Wallet.Lightweight
       PlutusAppsExtra.IO.Wallet
       PlutusAppsExtra.Scripts.CommonValidators
       PlutusAppsExtra.Scripts.OneShotCurrency

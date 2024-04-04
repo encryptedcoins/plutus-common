@@ -169,8 +169,9 @@ walletKeysToAddressBech32 WalletKeys{..} network = Address.bech32 $ S.delegation
         paymentCredential = PaymentFromKey $ toXPub <$> wkPaymentKey
         delegationCredential = DelegationFromKey $ toXPub <$> wkStakeKey
 
-walletKeysToStakeAddressBech32 :: WalletKeys -> NetworkId -> Either String Text
-walletKeysToStakeAddressBech32 WalletKeys{..} network = bimap show Address.bech32 $ S.stakeAddress networkTag delegationCredential
+walletKeysToStakeAddressBech32 :: WalletKeys -> NetworkId -> Either WalletError Text
+walletKeysToStakeAddressBech32 WalletKeys{..} network = bimap (UnbuildableStakeAddress . T.pack . show) Address.bech32
+    $ S.stakeAddress networkTag delegationCredential
     where
         networkTag = networkIdToNetworkDiscriminant network
         delegationCredential = DelegationFromKey $ toXPub <$> wkStakeKey
