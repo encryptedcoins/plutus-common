@@ -49,6 +49,11 @@ import           Prelude                             hiding ((-))
 data TxProvider = Cardano FilePath | Maestro
     deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
+isCardanoTxProvider :: TxProvider -> Bool
+isCardanoTxProvider = \case
+    Cardano _ -> True
+    _         -> False
+
 class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
 
     getTxProvider :: m TxProvider
