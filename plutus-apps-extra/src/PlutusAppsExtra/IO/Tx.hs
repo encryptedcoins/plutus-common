@@ -16,7 +16,7 @@
 module PlutusAppsExtra.IO.Tx where
 
 import           Cardano.Address.Style.Shelley       (getKey)
-import           Cardano.Api                         (BabbageEra, NetworkId, TxMetadataInEra)
+import           Cardano.Api                         (BabbageEra, TxMetadataInEra)
 import           Cardano.Node.Emulator               (Params)
 import           Control.Monad                       (void)
 import           Control.Monad.IO.Class              (MonadIO (..))
@@ -36,15 +36,17 @@ import qualified Plutus.V2.Ledger.Api                as P
 import           PlutusAppsExtra.Api.Maestro         (MonadMaestro)
 import           PlutusAppsExtra.Constraints.Balance (balanceExternalTx)
 import           PlutusAppsExtra.IO.ChainIndex       (HasChainIndexProvider)
+import qualified PlutusAppsExtra.IO.Node             as Node
 import qualified PlutusAppsExtra.IO.Tx.Cardano       as Cardano
 import qualified PlutusAppsExtra.IO.Tx.Maestro       as Maestro
 import           PlutusAppsExtra.IO.Wallet           (HasWalletProvider (..), getWalletKeys, getWalletUtxos, wkPaymentKey)
 import           PlutusAppsExtra.Utils.ChainIndex    (MapUTXO)
+import           PlutusAppsExtra.Utils.Network       (HasNetworkId (getNetworkId))
 import           PlutusTx.IsData                     (FromData, ToData)
 import           PlutusTx.Prelude                    (zero, (-))
 import           Prelude                             hiding ((-))
 
-data TxProvider = Cardano | Maestro
+data TxProvider = Cardano FilePath | Maestro
     deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
@@ -53,8 +55,8 @@ class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
 
     signTx :: CardanoTx -> m CardanoTx
     signTx ctx = getTxProvider >>= \case
-        Cardano -> Cardano.signTx ctx
-        Maestro -> signTxWithoutNode ctx
+        Cardano{} -> Cardano.signTx ctx
+        Maestro   -> signTxWithoutNode ctx
 
     balanceTx ::
         ( FromData (DatumType Any)
@@ -69,26 +71,28 @@ class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
         -> Maybe (TxMetadataInEra BabbageEra)
         -> m CardanoTx
     balanceTx params lookups cons mbMetadata = getTxProvider >>= \case
-        Cardano -> Cardano.balanceTx    params lookups cons mbMetadata
-        Maestro -> balanceTxWithoutNode params lookups cons mbMetadata
+        Cardano{} -> Cardano.balanceTx    params lookups cons mbMetadata
+        Maestro   -> balanceTxWithoutNode params lookups cons mbMetadata
 
     submitTx :: CardanoTx -> m ()
     default submitTx :: MonadMaestro m => CardanoTx -> m ()
     submitTx ctx = getTxProvider >>= \case
-       Cardano -> Cardano.submitTx ctx
-       Maestro -> void $ Maestro.submitTx ctx
+       Cardano{} -> Cardano.submitTx ctx
+       Maestro   -> void $ Maestro.submitTx ctx
 
     awaitTxConfirmed :: CardanoTx -> m ()
     default awaitTxConfirmed :: MonadMaestro m => CardanoTx -> m ()
     awaitTxConfirmed ctx = getTxProvider >>= \case
-       Cardano -> Cardano.awaitTxConfirmed ctx
-       Maestro -> Maestro.awaitTxConfirmed ctx
+       Cardano{} -> Cardano.awaitTxConfirmed ctx
+       Maestro   -> Maestro.awaitTxConfirmed ctx
 
 -- | Send a balanced transaction to local cardano node if `txProvider` is `cardano` or use `sumbitTx` otherwise
-sumbitTxToNodeLocal :: HasTxProvider m => FilePath -> NetworkId -> CardanoTx -> m ()
-sumbitTxToNodeLocal fp networkId ctx = getTxProvider >>= \case
-    Cardano -> sumbitTxToNodeLocal fp networkId ctx
-    _       -> submitTx ctx
+sumbitTxToNodeLocal :: HasTxProvider m => CardanoTx -> m ()
+sumbitTxToNodeLocal ctx = getTxProvider >>= \case
+    Cardano nodeFp -> do
+        networkId <- getNetworkId
+        void $ liftIO $ Node.sumbitTxToNodeLocal nodeFp networkId ctx
+    _ -> submitTx ctx
 
 signTxWithoutNode :: HasWalletProvider m => CardanoTx -> m CardanoTx
 signTxWithoutNode ctx = flip Ledger.addCardanoTxSignature ctx <$> (getKey .  wkPaymentKey <$> getWalletKeys)
