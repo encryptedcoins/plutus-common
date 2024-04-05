@@ -20,6 +20,9 @@ import           Data.Text                    (Text)
 import           Cardano.Api                  (serialiseToBech32)
 import           Control.Applicative          ((<|>))
 import           Control.Arrow                ((>>>))
+import           Control.Monad                (MonadPlus (..))
+import           Data.Aeson
+import qualified Data.Aeson                   as J
 import           Ledger                       (PubKeyHash (..), StakingCredential, toPlutusAddress)
 import           Ledger.Address               (Address (..), StakePubKeyHash (..), stakingCredential, toPubKeyHash)
 import           Ledger.Tx.CardanoAPI         (deserialiseFromRawBytes, toCardanoAddressInEra)
@@ -38,6 +41,11 @@ getStakeKey = stakingCredential >>> \case
     _ -> Nothing
 
 ----------------------------------- Bech32 conversions -----------------------------------------
+
+newtype Bech32Address = Bech32Address {unBech32Address :: Address}
+
+instance FromJSON Bech32Address where
+    parseJSON = J.withText "Bech32Address" $ \s -> maybe mzero (pure . Bech32Address) $ bech32ToAddress s
 
 -- TODO: simplify address conversions using the new Plutus.Ledger functions
 
