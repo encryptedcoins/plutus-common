@@ -1,14 +1,14 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE ViewPatterns        #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE AllowAmbiguousTypes        #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE ViewPatterns               #-}
+{-# LANGUAGE RankNTypes                 #-}
 
 module PlutusAppsExtra.Api.Blockfrost where
 
@@ -16,6 +16,7 @@ import           Cardano.Api                      (NetworkId (..), NetworkMagic 
 import           Control.Exception                (throw)
 import           Control.Monad.Catch              (Exception (..), MonadCatch, MonadThrow (..))
 import           Control.Monad.IO.Class           (MonadIO (..))
+import           Control.Monad.Reader             (ReaderT (..), asks, MonadReader)
 import qualified Data.ByteString                  as BS
 import           Data.Data                        (Proxy (..))
 import           Data.String                      (IsString (..))
@@ -34,7 +35,6 @@ import           PlutusAppsExtra.Utils.Servant    (CBOR)
 import           Servant.API                      (Capture, Get, Header, JSON, PlainText, PostAccepted, QueryParam, ReqBody, (:>))
 import           Servant.Client                   (BaseUrl (..), ClientM, Scheme (..), client, mkClientEnv, runClientM)
 import qualified Servant.Client                   as Servant
-import Control.Monad.Reader (ReaderT (..), asks, MonadReader)
 
 --------------------------------------------------- Blockfrost API ---------------------------------------------------
 
