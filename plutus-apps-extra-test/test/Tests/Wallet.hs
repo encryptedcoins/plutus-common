@@ -56,7 +56,7 @@ instance HasChainIndexProvider IO where
     getUnspentTxOutFromRef = (liftIO .) . Kupo.getUnspentTxOutFromRef
 
 instance HasTxProvider IO where
-    getTxProvider = pure Tx.Cardano
+    getTxProvider = pure $ Tx.Cardano ""
     submitTx = Cardano.submitTx
     awaitTxConfirmed = Cardano.awaitTxConfirmed
 

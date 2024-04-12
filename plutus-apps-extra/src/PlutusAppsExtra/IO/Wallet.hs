@@ -13,6 +13,7 @@
 
 module PlutusAppsExtra.IO.Wallet
     ( WalletProvider (..)
+    , isLightweightWalletProvider
     , HasWalletProvider (..)
     , getWalletKeyHashes
     , genPrvKey
@@ -65,6 +66,11 @@ import           System.Random                          (genByteString, getStdGe
 
 data WalletProvider = Cardano | Lightweight (NonEmpty Address)
     deriving (Show, Eq)
+
+isLightweightWalletProvider :: WalletProvider -> Bool
+isLightweightWalletProvider = \case
+    Lightweight _ -> True
+    _             -> False
 
 instance FromJSON WalletProvider where
     parseJSON = \case

@@ -76,6 +76,7 @@ data WalletError
     | UnparsableAddress Text
     | WalletIdDoesntHaveAnyAssociatedAddresses WalletId
     | AddressDoesntCorrespondToPubKey Address
+    | UnbuildableStakeAddress Text
     deriving (Show, Exception)
 
 data BlockfrostError

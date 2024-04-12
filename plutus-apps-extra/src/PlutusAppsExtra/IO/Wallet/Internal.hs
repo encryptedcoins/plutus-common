@@ -81,7 +81,6 @@ getWalletId = do
     RestoredWallet{..} <- getRestoredWallet
     pure $ genWalletId mnemonicSentence passphrase
 
-
 data InternalWalletError
     = CantDeriveWalletKeys String
     | CantGetStakeAddressFromAddress Address
@@ -121,6 +120,12 @@ genWalletId mnemonic pp = WalletId $ digest $ publicKey rootXPrv
   where
     rootXPrv = generateKeyFromSeed (mnemonic, Nothing) pwdP
     pwdP = preparePassphrase currentPassphraseScheme pp
+
+addressFromMnemonic :: MonadThrow m => NetworkId -> SomeMnemonic -> m Address
+addressFromMnemonic networkId mnemonic = do
+    keys <- either throwM pure $ walletKeysFromMnemonic mnemonic
+    let addrTxt = walletKeysToAddressBech32 keys networkId
+    maybe (throwM $ UnparsableAddress addrTxt) pure $ bech32ToAddress addrTxt
 
 restoreWalletFromFile :: (MonadIO m, MonadThrow m) => FilePath -> m RestoredWallet
 restoreWalletFromFile fp = liftIO (LB.readFile fp) >>=
@@ -169,8 +174,9 @@ walletKeysToAddressBech32 WalletKeys{..} network = Address.bech32 $ S.delegation
         paymentCredential = PaymentFromKey $ toXPub <$> wkPaymentKey
         delegationCredential = DelegationFromKey $ toXPub <$> wkStakeKey
 
-walletKeysToStakeAddressBech32 :: WalletKeys -> NetworkId -> Either String Text
-walletKeysToStakeAddressBech32 WalletKeys{..} network = bimap show Address.bech32 $ S.stakeAddress networkTag delegationCredential
+walletKeysToStakeAddressBech32 :: WalletKeys -> NetworkId -> Either WalletError Text
+walletKeysToStakeAddressBech32 WalletKeys{..} network = bimap (UnbuildableStakeAddress . T.pack . show) Address.bech32
+    $ S.stakeAddress networkTag delegationCredential
     where
         networkTag = networkIdToNetworkDiscriminant network
         delegationCredential = DelegationFromKey $ toXPub <$> wkStakeKey

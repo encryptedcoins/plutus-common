@@ -1,10 +1,14 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE ViewPatterns        #-}
+{-# LANGUAGE AllowAmbiguousTypes        #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE ViewPatterns               #-}
+{-# LANGUAGE RankNTypes                 #-}
 
 module PlutusAppsExtra.Api.Blockfrost where
 
@@ -12,6 +16,7 @@ import           Cardano.Api                      (NetworkId (..), NetworkMagic 
 import           Control.Exception                (throw)
 import           Control.Monad.Catch              (Exception (..), MonadCatch, MonadThrow (..))
 import           Control.Monad.IO.Class           (MonadIO (..))
+import           Control.Monad.Reader             (ReaderT (..), asks, MonadReader)
 import qualified Data.ByteString                  as BS
 import           Data.Data                        (Proxy (..))
 import           Data.String                      (IsString (..))
@@ -78,7 +83,7 @@ getAssetHistory cs name order page = getFromEndpointBFWithToken $ \t ->
 type GetAccountAssociatedAddresses = ApiPrefix :> Auth :>
     "accounts" :> Capture "Stake address" (Bf StakeAddress) :> "addresses" :> QueryParam "page" Int :> QueryParam "order" BfOrder :> Get '[JSON] AccountAssociatedAddressesResponse
 
-getAccountAssociatedAddresses :: MonadBlockfrost m =>  StakeAddress -> Int -> m AccountAssociatedAddressesResponse
+getAccountAssociatedAddresses :: MonadBlockfrost m => StakeAddress -> Int -> m AccountAssociatedAddressesResponse
 getAccountAssociatedAddresses addr page = getFromEndpointBFWithToken $ \t ->
     client (Proxy @GetAccountAssociatedAddresses) t (Bf addr) (Just page) (Just Desc)
 
@@ -141,3 +146,15 @@ getFromEndpointBF endpoint = do
 
 portBf :: Int
 portBf = 80
+
+runBfMonad :: NetworkId -> BlockfrostToken -> RunBfMonad a -> IO a
+runBfMonad networkId token = flip runReaderT (networkId, token) . unRunBfMonad
+
+newtype RunBfMonad a = RunBfMonad {unRunBfMonad :: ReaderT (NetworkId, BlockfrostToken) IO a}
+    deriving newtype (Functor, Applicative, Monad, MonadThrow, MonadCatch, MonadIO, MonadReader (NetworkId, BlockfrostToken))
+
+instance HasNetworkId RunBfMonad where
+    getNetworkId = asks fst
+
+instance MonadBlockfrost RunBfMonad where
+    getBlockfrostToken = asks snd

@@ -68,7 +68,7 @@ getAddressFromStakeAddress stakeAddr = do
     txId <- fmap adhrTxHash . listToMaybe <$> Api.getAccountDelegationHistory stakeAddr
     maybe (pure Nothing) (fmap (fmap turiAddress . listToMaybe . turInputs) . Api.getTxUtxo) txId
 
-getAccountAssociatedAddresses :: MonadBlockfrost m =>  StakePubKeyHash -> m (Maybe [Address])
+getAccountAssociatedAddresses :: MonadBlockfrost m => StakePubKeyHash -> m (Maybe [Address])
 getAccountAssociatedAddresses spkh = do
     network <- getNetworkId
     case makeStakeAddress network <$> spkhToStakeCredential spkh of
