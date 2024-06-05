@@ -28,7 +28,6 @@ import           Ledger                              (CardanoTx (..), DecoratedT
                                                       getCardanoTxOutputs, toPlutusAddress, txOutAddress, txOutValue)
 import qualified Ledger
 import           Ledger.Tx.CardanoAPI                (unspentOutputsTx)
-import           Ledger.Tx.Constraints               (ScriptLookups, TxConstraints, mustPayToPubKey, mustPayToPubKeyAddress)
 import           Ledger.Typed.Scripts                (Any, ValidatorTypes (..))
 import qualified Plutus.Script.Utils.Ada             as Ada
 import           Plutus.Script.Utils.Value           (leq)
@@ -40,9 +39,9 @@ import qualified PlutusAppsExtra.IO.Node             as Node
 import qualified PlutusAppsExtra.IO.Tx.Cardano       as Cardano
 import qualified PlutusAppsExtra.IO.Tx.Maestro       as Maestro
 import           PlutusAppsExtra.IO.Wallet           (HasWalletProvider (..), getWalletKeys, getWalletUtxos, wkPaymentKey)
+import           PlutusAppsExtra.PlutusApps          (ScriptLookups, TxConstraints, mustPayToPubKey, mustPayToPubKeyAddress)
 import           PlutusAppsExtra.Utils.ChainIndex    (MapUTXO)
 import           PlutusAppsExtra.Utils.Network       (HasNetworkId (getNetworkId))
-import           PlutusTx.IsData                     (FromData, ToData)
 import           PlutusTx.Prelude                    (zero, (-))
 import           Prelude                             hiding ((-))
 
@@ -62,22 +61,6 @@ class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
     signTx ctx = getTxProvider >>= \case
         Cardano{} -> Cardano.signTx ctx
         Maestro   -> signTxWithoutNode ctx
-
-    balanceTx ::
-        ( FromData (DatumType Any)
-        , ToData (DatumType Any)
-        , ToData (RedeemerType Any)
-        , Show (DatumType Any)
-        , Show (RedeemerType Any)
-        )
-        => Params
-        -> ScriptLookups Any
-        -> TxConstraints (RedeemerType Any) (DatumType Any)
-        -> Maybe (TxMetadataInEra BabbageEra)
-        -> m CardanoTx
-    balanceTx params lookups cons mbMetadata = getTxProvider >>= \case
-        Cardano{} -> Cardano.balanceTx    params lookups cons mbMetadata
-        Maestro   -> balanceTxWithoutNode params lookups cons mbMetadata
 
     submitTx :: CardanoTx -> m ()
     default submitTx :: MonadMaestro m => CardanoTx -> m ()
@@ -102,13 +85,13 @@ sumbitTxToNodeLocal ctx = getTxProvider >>= \case
 signTxWithoutNode :: HasWalletProvider m => CardanoTx -> m CardanoTx
 signTxWithoutNode ctx = flip Ledger.addCardanoTxSignature ctx <$> (getKey .  wkPaymentKey <$> getWalletKeys)
 
-balanceTxWithoutNode :: HasTxProvider m
+balanceTx :: HasTxProvider m
     => Params
     -> ScriptLookups Any
     -> TxConstraints (RedeemerType Any) (DatumType Any)
     -> Maybe (TxMetadataInEra BabbageEra)
     -> m CardanoTx
-balanceTxWithoutNode params lookups cons mbMetadata = do
+balanceTx params lookups cons mbMetadata = do
     changeAddress <- getWalletAddr
     walletUTXO <- getWalletUtxos mempty
     balanceExternalTx params walletUTXO changeAddress lookups cons mbMetadata

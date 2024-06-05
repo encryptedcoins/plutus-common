@@ -10,38 +10,36 @@
 
 module PlutusAppsExtra.Utils.Tx where
 
-import qualified Cardano.Api                            as C
-import           Cardano.Api.Shelley                    (AnyCardanoEra (..), AsType (..), CardanoEra (..), ConsensusMode (..),
-                                                         EraInMode (..), InAnyCardanoEra (..), KeyWitness (..), SerialiseAsCBOR (..),
-                                                         ShelleyBasedEra (..), ToJSON, Tx (..), TxMetadataJsonSchema, metadataFromJson,
-                                                         toEraInMode)
-import qualified Cardano.Crypto.DSIGN                   as Crypto
-import           Cardano.Ledger.Shelley.API             (VKey (VKey), WitVKey (WitVKey))
-import           Cardano.Node.Emulator.Params           (Params)
-import           Cardano.Wallet.Api.Types               (ApiSerialisedTransaction (..), getApiT)
-import           Cardano.Wallet.LocalClient.ExportTx    (ExportTx (..), export)
-import           Cardano.Wallet.Primitive.Types.Tx      (SealedTx, cardanoTxIdeallyNoLaterThan, sealedTxFromCardano')
-import           Control.FromSum                        (eitherToMaybe, fromMaybe)
-import           Data.Aeson                             (ToJSON (..))
-import           Data.Aeson.Extras                      (encodeByteString, tryDecode)
-import           Data.Functor                           ((<&>))
-import qualified Data.Map                               as Map
-import           Data.Text                              (Text)
-import           Ledger                                 (PaymentPubKeyHash (..), PubKey (..), PubKeyHash (..), Signature (..), TxId,
-                                                         TxOut (getTxOut), getCardanoTxProducedOutputs)
-import           Ledger.Tx                              (CardanoTx (..))
-import           Ledger.Tx.CardanoAPI                   (CardanoBuildTx (..), getRequiredSigners)
-import           Ledger.Tx.Constraints                  (UnbalancedTx)
-import           Plutus.V1.Ledger.Bytes                 (bytes, fromBytes)
-import           Plutus.V2.Ledger.Api                   (BuiltinByteString, fromBuiltin, toBuiltin)
-import           PlutusAppsExtra.IO.ChainIndex.Plutus   (getTxFromId)
-import           Text.Hex                               (decodeHex)
+import qualified Cardano.Api                       as C
+import           Cardano.Api.Shelley               (AnyCardanoEra (..), AsType (..), CardanoEra (..), ConsensusMode (..),
+                                                    EraInMode (..), InAnyCardanoEra (..), KeyWitness (..), SerialiseAsCBOR (..),
+                                                    ShelleyBasedEra (..), ToJSON, Tx (..), TxMetadataJsonSchema, metadataFromJson,
+                                                    toEraInMode)
+import qualified Cardano.Crypto.DSIGN              as Crypto
+import           Cardano.Ledger.Shelley.API        (VKey (VKey), WitVKey (WitVKey))
+import           Cardano.Node.Emulator.Params      (Params)
+import           Cardano.Wallet.Api.Types          (ApiSerialisedTransaction (..), getApiT)
+import           Cardano.Wallet.Primitive.Types.Tx (SealedTx, cardanoTxIdeallyNoLaterThan, sealedTxFromCardano')
+import           Control.FromSum                   (eitherToMaybe, fromMaybe)
+import           Data.Aeson                        (ToJSON (..))
+import           Data.Aeson.Extras                 (encodeByteString, tryDecode)
+import           Data.Functor                      ((<&>))
+import qualified Data.Map                          as Map
+import           Data.Text                         (Text)
+import           Ledger                            (PaymentPubKeyHash (..), PubKey (..), PubKeyHash (..), Signature (..), TxId,
+                                                    TxOut (getTxOut), getCardanoTxProducedOutputs)
+import           Ledger.Tx                         (CardanoTx (..))
+import           Ledger.Tx.CardanoAPI              (CardanoBuildTx (..), getRequiredSigners)
+import           PlutusAppsExtra.PlutusApps        (UnbalancedTx)
+import           Plutus.V1.Ledger.Bytes            (bytes, fromBytes)
+import           Plutus.V2.Ledger.Api              (BuiltinByteString, fromBuiltin, toBuiltin)
+import           Text.Hex                          (decodeHex)
 
 ------------------------ Export/Import of transactions -------------------------
 
-unbalancedTxToCBOR :: Params -> UnbalancedTx -> Maybe Text
-unbalancedTxToCBOR params =
-    fmap (encodeByteString . serialiseToCBOR . partialTx) . eitherToMaybe . export params
+-- unbalancedTxToCBOR :: Params -> UnbalancedTx -> Maybe Text
+-- unbalancedTxToCBOR params =
+--     fmap (encodeByteString . serialiseToCBOR . partialTx) . eitherToMaybe . export params
 
 textToCardanoTx :: Text -> Maybe CardanoTx
 textToCardanoTx txt = do
@@ -117,7 +115,7 @@ addCardanoTxSignature pubKey sig (CardanoTx (Tx body wits) eraInMode) = CardanoT
 getTxDatums :: CardanoTx -> [C.TxOutDatum C.CtxTx C.BabbageEra]
 getTxDatums = map ((\(C.TxOut _ _ c _) -> c) . getTxOut) . Map.elems . getCardanoTxProducedOutputs
 
-txIsSignedByKey :: TxId -> BuiltinByteString -> IO Bool
-txIsSignedByKey txId pkh = getTxFromId txId <&> \case
-    Just (CardanoTx tx BabbageEraInCardanoMode) -> PaymentPubKeyHash (PubKeyHash pkh) `elem` getRequiredSigners tx
-    _ -> False
+-- txIsSignedByKey :: TxId -> BuiltinByteString -> IO Bool
+-- txIsSignedByKey txId pkh = getTxFromId txId <&> \case
+--     Just (CardanoTx tx BabbageEraInCardanoMode) -> PaymentPubKeyHash (PubKeyHash pkh) `elem` getRequiredSigners tx
+--     _ -> False

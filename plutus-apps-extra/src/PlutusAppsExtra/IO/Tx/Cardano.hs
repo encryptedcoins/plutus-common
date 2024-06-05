@@ -11,34 +11,33 @@
 
 module PlutusAppsExtra.IO.Tx.Cardano where
 
-import           Cardano.Node.Emulator                   (Params)
-import qualified Cardano.Wallet.Api.Client               as Client
-import           Cardano.Wallet.Api.Types                (ApiSerialisedTransaction (..),
-                                                          ApiSignTransactionPostData (ApiSignTransactionPostData), ApiT (..), ApiTxId (..))
-import           Cardano.Wallet.Api.Types.SchemaMetadata (TxMetadataSchema (..))
-import           Cardano.Wallet.LocalClient.ExportTx     (export)
-import           Cardano.Wallet.Primitive.Passphrase     (Passphrase (..))
-import           Control.Concurrent                      (threadDelay)
-import           Control.Lens                            ((^?))
-import           Control.Monad                           (unless, void)
-import           Control.Monad.IO.Class                  (MonadIO (..))
-import           Data.Aeson                              (ToJSON (..))
-import           Data.Aeson.Lens                         (_String, key)
-import           Data.Coerce                             (coerce)
-import qualified Data.Text                               as T
-import           Data.Text.Class                         (FromText (fromText))
-import           Ledger                                  (CardanoTx (..))
-import           Ledger.Tx                               (getCardanoTxId)
-import           Ledger.Typed.Scripts                    (ValidatorTypes (..))
-import           PlutusTx.IsData                         (FromData, ToData)
-import           Prelude                                 hiding ((-))
+import           Cardano.Node.Emulator                    (Params)
+import qualified Cardano.Wallet.Api.Client                as Client
+import           Cardano.Wallet.Api.Types                 (ApiSerialisedTransaction (..),
+                                                           ApiSignTransactionPostData (ApiSignTransactionPostData), ApiT (..), ApiTxId (..))
+import           Cardano.Wallet.Api.Types.SchemaMetadata  (TxMetadataSchema (..))
+import           Cardano.Wallet.Primitive.Passphrase      (Passphrase (..))
+import           Control.Concurrent                       (threadDelay)
+import           Control.Lens                             ((^?))
+import           Control.Monad                            (unless, void)
+import           Control.Monad.IO.Class                   (MonadIO (..))
+import           Data.Aeson                               (ToJSON (..))
+import           Data.Aeson.Lens                          (_String, key)
+import           Data.Coerce                              (coerce)
+import qualified Data.Text                                as T
+import           Data.Text.Class                          (FromText (fromText))
+import           Ledger                                   (CardanoTx (..))
+import           Ledger.Tx                                (getCardanoTxId)
+import           Ledger.Typed.Scripts                     (ValidatorTypes (..))
+import           PlutusTx.IsData                          (FromData, ToData)
+import           Prelude                                  hiding ((-))
 
-import           Cardano.Api                             (BabbageEra, TxMetadataInEra)
-import           Ledger.Tx.Constraints                   (ScriptLookups, TxConstraints, UnbalancedTx (..), mkTxWithParams)
-import           PlutusAppsExtra.IO.Wallet               (HasWallet, getPassphrase, getWalletId)
-import           PlutusAppsExtra.IO.Wallet.Cardano       (getFromEndpointWallet)
-import           PlutusAppsExtra.Types.Error             (MkTxError (..), mkUnbuildableUnbalancedTxError, throwEither, throwMaybe)
-import           PlutusAppsExtra.Utils.Tx                (addMetadataToCardanoBuildTx, apiSerializedTxToCardanoTx, cardanoTxToSealedTx)
+import           Cardano.Api                              (BabbageEra, TxMetadataInEra)
+import           PlutusAppsExtra.PlutusApps               (ScriptLookups, TxConstraints, UnbalancedTx (..), mkTxWithParams)
+import           PlutusAppsExtra.IO.Wallet                (HasWallet, getPassphrase, getWalletId)
+import           PlutusAppsExtra.IO.Wallet.Cardano        (getFromEndpointWallet)
+import           PlutusAppsExtra.Types.Error              (MkTxError (..), mkUnbuildableUnbalancedTxError, throwEither, throwMaybe)
+import           PlutusAppsExtra.Utils.Tx                 (addMetadataToCardanoBuildTx, apiSerializedTxToCardanoTx, cardanoTxToSealedTx)
 
 ------------------------------------------- Tx functions -------------------------------------------
 
@@ -53,31 +52,6 @@ signTx ctx = do
         sign walletId pp = getFromEndpointWallet $ Client.signTransaction Client.transactionClient
             (ApiT walletId)
             (ApiSignTransactionPostData (ApiT stx) (ApiT pp))
-
-balanceTx ::
-    ( HasWallet m
-    , FromData (DatumType a)
-    , ToData (DatumType a)
-    , ToData (RedeemerType a)
-    , Show (DatumType a)
-    , Show (RedeemerType a)
-    )
-    => Params
-    -> ScriptLookups a
-    -> TxConstraints (RedeemerType a) (DatumType a)
-    -> Maybe (TxMetadataInEra BabbageEra)
-    -> m CardanoTx
-balanceTx params lookups cons mbMetadata = do
-    walletId     <- getWalletId
-    unbalancedTx <- setMetadata <$> mkUnbalancedTx
-    exportTx     <- throwEither (UnbuildableExportTx unbalancedTx) $ export params unbalancedTx
-    asTx         <- getFromEndpointWallet $ Client.balanceTransaction Client.transactionClient
-        (ApiT walletId)
-        (toJSON exportTx)
-    throwMaybe (ConvertApiSerialisedTxToCardanoTxError asTx) $ apiSerializedTxToCardanoTx asTx
-  where
-    mkUnbalancedTx = throwEither (mkUnbuildableUnbalancedTxError lookups cons) (mkTxWithParams params lookups cons)
-    setMetadata (UnbalancedCardanoTx cbTx utxos) = UnbalancedCardanoTx (addMetadataToCardanoBuildTx mbMetadata cbTx) utxos
 
 -- Send a balanced transaction to Cardano Wallet Backend and return immediately
 submitTx :: HasWallet m => CardanoTx -> m ()

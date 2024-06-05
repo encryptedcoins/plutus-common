@@ -23,8 +23,7 @@ import           PlutusTx.Prelude                 hiding (Semigroup, fromInteger
 import           Prelude                          (Monoid (mempty), Show)
 import qualified Prelude                          as Haskell
 
-import           Ledger.Tx.Constraints            (TxConstraints)
-import           Ledger.Tx.Constraints.OffChain   (ScriptLookups)
+import           PlutusAppsExtra.PlutusApps       (ScriptLookups, TxConstraints)
 import           PlutusAppsExtra.IO.Time          (HasClock (..))
 import           PlutusAppsExtra.Types.Error      (TxBuilderError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)

@@ -5,20 +5,19 @@
 
 module PlutusAppsExtra.Utils.Datum where
 
-import qualified Cardano.Ledger.Alonzo.Data          as Alonzo
-import           Cardano.Ledger.Alonzo.TxInfo        (transDataHash')
-import           Cardano.Ledger.Crypto               (StandardCrypto)
-import           Data.Coerce                         (coerce)
-import           Data.Text                           (Text)
-import           Ledger                              (DatumFromQuery (..), DatumHash (..), datumHash)
-import           Ledger.Tx.Constraints.TxConstraints (TxOutDatum (..))
-import           Ouroboros.Consensus.Shelley.Eras    (ShelleyEra)
-import           Plutus.ChainIndex                   (OutputDatum (..))
-import           Plutus.V1.Ledger.Scripts            (Datum (..))
-import           Plutus.V2.Ledger.Api                (BuiltinByteString, builtinDataToData, fromBuiltin)
-import           PlutusTx.IsData.Class               (ToData (toBuiltinData))
-import           PlutusTx.Prelude                    (Bool (False), Eq ((==)), ($), (.))
-import qualified Text.Hex                            as T
+import qualified Cardano.Ledger.Alonzo.Data       as Alonzo
+import           Cardano.Ledger.Alonzo.TxInfo     (transDataHash')
+import           Cardano.Ledger.Crypto            (StandardCrypto)
+import           Data.Coerce                      (coerce)
+import           Data.Text                        (Text)
+import           Ledger                           (DatumFromQuery (..), DatumHash (..), datumHash)
+import           PlutusAppsExtra.PlutusApps       (TxOutDatum (..))
+import           Ouroboros.Consensus.Shelley.Eras (ShelleyEra)
+import           Plutus.V1.Ledger.Scripts         (Datum (..))
+import           Plutus.V2.Ledger.Api             (BuiltinByteString, OutputDatum (..), builtinDataToData, fromBuiltin)
+import           PlutusTx.IsData.Class            (ToData (toBuiltinData))
+import           PlutusTx.Prelude                 (Bool (False), Eq ((==)), ($), (.))
+import qualified Text.Hex                         as T
 
 toDatumHash :: ToData datum => datum -> TxOutDatum Datum
 toDatumHash = TxOutDatumHash . Datum . toBuiltinData

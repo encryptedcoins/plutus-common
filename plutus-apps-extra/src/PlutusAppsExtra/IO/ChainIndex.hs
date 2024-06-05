@@ -17,7 +17,6 @@ import           Plutus.Script.Utils.Ada               (Ada)
 import           PlutusAppsExtra.Api.Maestro           (MonadMaestro)
 import qualified PlutusAppsExtra.IO.ChainIndex.Kupo    as Kupo
 import qualified PlutusAppsExtra.IO.ChainIndex.Maestro as Maestro
-import qualified PlutusAppsExtra.IO.ChainIndex.Plutus  as Plutus
 import           PlutusAppsExtra.Types.Tx              (UtxoRequirements)
 import           PlutusAppsExtra.Utils.ChainIndex      (MapUTXO)
 
@@ -28,18 +27,16 @@ class Monad m => HasChainIndexProvider m where
     getUtxosAt :: UtxoRequirements -> Address -> m MapUTXO
     default getUtxosAt :: MonadMaestro m => UtxoRequirements -> Address -> m MapUTXO
     getUtxosAt reqs addr = getChainIndexProvider >>= \case
-        Plutus  -> liftIO $ Plutus.getUtxosAt addr
         Kupo    -> liftIO $ Kupo.getUtxosAt reqs addr
         Maestro -> Maestro.getUtxosAt reqs addr
 
     getUnspentTxOutFromRef :: UtxoRequirements -> TxOutRef -> m (Maybe DecoratedTxOut)
     default getUnspentTxOutFromRef :: MonadMaestro m => UtxoRequirements -> TxOutRef -> m (Maybe DecoratedTxOut)
     getUnspentTxOutFromRef reqs txOutRef = getChainIndexProvider >>= \case
-        Plutus  -> liftIO $ Plutus.getUnspentTxOutFromRef txOutRef
         Kupo    -> liftIO $ Kupo.getUnspentTxOutFromRef reqs txOutRef
         Maestro -> Maestro.getUnspentTxOutFromRef reqs txOutRef
 
-data ChainIndexProvider = Plutus | Kupo | Maestro
+data ChainIndexProvider = Kupo | Maestro
     deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 getRefsAt :: HasChainIndexProvider m => Address -> m [TxOutRef]

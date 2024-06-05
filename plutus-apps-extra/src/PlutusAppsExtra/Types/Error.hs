@@ -23,8 +23,8 @@ import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 import           GHC.Generics                   (Generic)
 import           Ledger                         (Address, CardanoTx, DecoratedTxOut, ToCardanoError)
-import           Ledger.Tx.Constraints          (ScriptLookups (..), TxConstraints (..), UnbalancedTx)
-import qualified Ledger.Tx.Constraints.OffChain as Ledger
+import           PlutusAppsExtra.PlutusApps     (TxConstraints (..), ScriptLookups (..), UnbalancedTx)
+import qualified PlutusAppsExtra.PlutusApps     as PlutusApps
 import           Network.HTTP.Client            (HttpExceptionContent, Request)
 import qualified Plutus.V2.Ledger.Api           as P
 import           PlutusAppsExtra.IO.Tx.Internal (TxState)
@@ -61,14 +61,14 @@ mkUnbuildableUnbalancedTxError :: (Show c1, Show c2) => ScriptLookups l -> TxCon
 mkUnbuildableUnbalancedTxError lookups cons = UnbuildableUnbalancedTx (T.pack $ show lookups) (T.pack $ show cons)
 
 data BalanceExternalTxError
-    = MakeUnbalancedTxError      Ledger.MkTxError Text Text
+    = MakeUnbalancedTxError      PlutusApps.MkTxError Text Text
     -- ^ MakeUnbalancedTxError has text representation of tx lookups and constraints because they dont have Eq and JSON instances.
     | NonBabbageEraChangeAddress Address
     | MakeUtxoProviderError      UnbalancedTx BalancingError
     | MakeAutoBalancedTxError    UnbalancedTx CardanoLedgerError
     deriving (Show, Exception, Eq, Generic, FromJSON, ToJSON)
 
-mkUnbalancedTxError :: (Show c1, Show c2) => ScriptLookups l -> TxConstraints c1 c2 -> Ledger.MkTxError -> BalanceExternalTxError
+mkUnbalancedTxError :: (Show c1, Show c2) => ScriptLookups l -> TxConstraints c1 c2 -> PlutusApps.MkTxError -> BalanceExternalTxError
 mkUnbalancedTxError lookups cons err = MakeUnbalancedTxError err (T.pack $ show lookups) (T.pack $ show cons)
 
 data WalletError

@@ -10,18 +10,18 @@
 
 module PlutusAppsExtra.Constraints.Balance where
 
-import           Cardano.Api                      (BabbageEra, EraInMode (..), TxMetadataInEra (..))
-import           Cardano.Node.Emulator            (Params (..))
-import           Cardano.Node.Emulator.Fee        (makeAutoBalancedTransactionWithUtxoProvider, utxoProviderFromWalletOutputs)
-import           Control.Monad.Catch              (MonadThrow (..))
-import           Ledger                           (Address, CardanoTx (..))
-import           Ledger.Index                     (UtxoIndex (..))
-import           Ledger.Tx.CardanoAPI             (toCardanoAddressInEra)
-import           Ledger.Tx.Constraints            (ScriptLookups (..), TxConstraints, UnbalancedTx (..), mkTxWithParams)
-import           Ledger.Typed.Scripts             (Any, ValidatorTypes (..))
-import           PlutusAppsExtra.Types.Error      (BalanceExternalTxError (..), mkUnbalancedTxError, throwEither)
-import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO, toCardanoUtxo)
-import           PlutusAppsExtra.Utils.Tx         (addMetadataToCardanoBuildTx)
+import           Cardano.Api                              (BabbageEra, EraInMode (..), TxMetadataInEra (..))
+import           Cardano.Node.Emulator                    (Params (..))
+import           Cardano.Node.Emulator.Fee                (makeAutoBalancedTransactionWithUtxoProvider, utxoProviderFromWalletOutputs)
+import           Control.Monad.Catch                      (MonadThrow (..))
+import           Ledger                                   (Address, CardanoTx (..))
+import           Ledger.Index                             (UtxoIndex (..))
+import           Ledger.Tx.CardanoAPI                     (toCardanoAddressInEra)
+import           Ledger.Typed.Scripts                     (Any, ValidatorTypes (..))
+import           PlutusAppsExtra.PlutusApps               (ScriptLookups (..), TxConstraints, UnbalancedTx (..), mkTxWithParams)
+import           PlutusAppsExtra.Types.Error              (BalanceExternalTxError (..), mkUnbalancedTxError, throwEither)
+import           PlutusAppsExtra.Utils.ChainIndex         (MapUTXO, toCardanoUtxo)
+import           PlutusAppsExtra.Utils.Tx                 (addMetadataToCardanoBuildTx)
 import           Prelude
 
 balanceExternalTx :: (MonadThrow m)
