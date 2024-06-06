@@ -16,18 +16,20 @@
 module PlutusAppsExtra.IO.Tx where
 
 import           Cardano.Address.Style.Shelley       (getKey)
-import           Cardano.Api                         (BabbageEra, TxMetadataInEra)
+import           Cardano.Api                         (BabbageEra, SigningKey (..), TxMetadataInEra, ShelleyWitnessSigningKey (..))
 import           Cardano.Node.Emulator               (Params)
 import           Control.Monad                       (void)
 import           Control.Monad.IO.Class              (MonadIO (..))
 import           Data.Aeson                          (FromJSON, ToJSON)
+import           Data.Functor                        ((<&>))
 import qualified Data.Map                            as Map
 import           GHC.Generics                        (Generic)
 import           Ledger                              (CardanoTx (..), DecoratedTxOut (..), PaymentPubKeyHash (PaymentPubKeyHash),
-                                                      PubKeyHash, StakingCredential, TxOutRef, _decoratedTxOutAddress, fromCardanoValue,
-                                                      getCardanoTxOutputs, toPlutusAddress, txOutAddress, txOutValue)
+                                                      PubKeyHash, StakingCredential, TxOutRef, _decoratedTxOutAddress,
+                                                      fromCardanoValue, getCardanoTxOutputs, getCardanoTxId, toPlutusAddress, 
+                                                      txOutAddress, txOutValue)
 import qualified Ledger
-import           Ledger.Tx.CardanoAPI                (unspentOutputsTx)
+import           Ledger.Tx.CardanoAPI                (fromCardanoTxId, unspentOutputsTx)
 import           Ledger.Typed.Scripts                (Any, ValidatorTypes (..))
 import qualified Plutus.Script.Utils.Ada             as Ada
 import           Plutus.Script.Utils.Value           (leq)
@@ -37,55 +39,60 @@ import           PlutusAppsExtra.Constraints.Balance (balanceExternalTx)
 import           PlutusAppsExtra.IO.ChainIndex       (HasChainIndexProvider)
 import qualified PlutusAppsExtra.IO.Node             as Node
 import qualified PlutusAppsExtra.IO.Tx.Cardano       as Cardano
+import           PlutusAppsExtra.IO.Tx.Internal      (AwaitTxParameters (..))
 import qualified PlutusAppsExtra.IO.Tx.Maestro       as Maestro
-import           PlutusAppsExtra.IO.Wallet           (HasWalletProvider (..), getWalletKeys, getWalletUtxos, wkPaymentKey)
+import           PlutusAppsExtra.IO.Wallet           (HasWallet (..), getWalletAddr, getWalletKeys, getWalletUtxos, wkPaymentKey)
 import           PlutusAppsExtra.PlutusApps          (ScriptLookups, TxConstraints, mustPayToPubKey, mustPayToPubKeyAddress)
 import           PlutusAppsExtra.Utils.ChainIndex    (MapUTXO)
 import           PlutusAppsExtra.Utils.Network       (HasNetworkId (getNetworkId))
 import           PlutusTx.Prelude                    (zero, (-))
 import           Prelude                             hiding ((-))
 
-data TxProvider = Cardano FilePath | Maestro
+data TxProvider
+    = Cardano FilePath AwaitTxParameters
+    | Maestro AwaitTxParameters
     deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 isCardanoTxProvider :: TxProvider -> Bool
 isCardanoTxProvider = \case
-    Cardano _ -> True
+    Cardano{} -> True
     _         -> False
 
-class (HasWalletProvider m, HasChainIndexProvider m) => HasTxProvider m where
+class (HasWallet m, HasChainIndexProvider m) => HasTxProvider m where
 
     getTxProvider :: m TxProvider
 
-    signTx :: CardanoTx -> m CardanoTx
-    signTx ctx = getTxProvider >>= \case
-        Cardano{} -> Cardano.signTx ctx
-        Maestro   -> signTxWithoutNode ctx
-
-    submitTx :: CardanoTx -> m ()
-    default submitTx :: MonadMaestro m => CardanoTx -> m ()
+    submitTx :: CardanoTx -> m Ledger.TxId
+    default submitTx :: MonadMaestro m => CardanoTx -> m Ledger.TxId
     submitTx ctx = getTxProvider >>= \case
-       Cardano{} -> Cardano.submitTx ctx
-       Maestro   -> void $ Maestro.submitTx ctx
 
-    awaitTxConfirmed :: CardanoTx -> m ()
-    default awaitTxConfirmed :: MonadMaestro m => CardanoTx -> m ()
-    awaitTxConfirmed ctx = getTxProvider >>= \case
-       Cardano{} -> Cardano.awaitTxConfirmed ctx
-       Maestro   -> Maestro.awaitTxConfirmed ctx
+        Cardano fp _ -> fst <$> do
+            networkId <- getNetworkId
+            void $ Node.sumbitTxToNodeLocal fp networkId ctx
 
--- | Send a balanced transaction to local cardano node if `txProvider` is `cardano` or use `sumbitTx` otherwise
-sumbitTxToNodeLocal :: HasTxProvider m => CardanoTx -> m ()
-sumbitTxToNodeLocal ctx = getTxProvider >>= \case
-    Cardano nodeFp -> do
-        networkId <- getNetworkId
-        void $ liftIO $ Node.sumbitTxToNodeLocal nodeFp networkId ctx
-    _ -> submitTx ctx
+        Maestro{}    -> Maestro.submitTx ctx
 
-signTxWithoutNode :: HasWalletProvider m => CardanoTx -> m CardanoTx
-signTxWithoutNode ctx = flip Ledger.addCardanoTxSignature ctx <$> (getKey .  wkPaymentKey <$> getWalletKeys)
+    awaitTxConfirmed :: P.TxId -> m ()
+    default awaitTxConfirmed :: MonadMaestro m => P.TxId -> m ()
+    awaitTxConfirmed txId = getTxProvider >>= \case
+       Cardano{} -> getTxAwaitTxParameters >>= flip Cardano.awaitTxConfirmed txId
+       Maestro{} -> Maestro.awaitTxConfirmed (_ txId)
 
-balanceTx :: HasTxProvider m
+getTxAwaitTxParameters :: HasTxProvider m => m AwaitTxParameters
+getTxAwaitTxParameters = getTxProvider <&> \case
+    Cardano _ ps -> ps
+    Maestro ps   -> ps
+
+signTx :: HasWallet m => CardanoTx -> m CardanoTx
+signTx ctx = getWalletKeys <&>
+    (`addCardanoTxWitness` ctx) . WitnessPaymentExtendedKey . PaymentExtendedSigningKey . getKey . wkPaymentKey
+  where
+    addCardanoTxWitness = undefined
+
+balanceTx ::
+    ( HasWallet m
+    , HasChainIndexProvider m
+    )
     => Params
     -> ScriptLookups Any
     -> TxConstraints (RedeemerType Any) (DatumType Any)
@@ -98,10 +105,10 @@ balanceTx params lookups cons mbMetadata = do
 
 -- | Send a balanced transaction and wait until transaction is confirmed or declined
 submitTxConfirmed :: HasTxProvider m => CardanoTx -> m ()
-submitTxConfirmed ctx = submitTx ctx >> awaitTxConfirmed ctx
+submitTxConfirmed ctx = submitTx ctx >> awaitTxConfirmed (getCardanoTxId ctx)
 
 -- | Get wallet total profit from a transaction
-getTxProfit :: HasWalletProvider m => CardanoTx -> MapUTXO -> m P.Value
+getTxProfit :: HasWallet m => CardanoTx -> MapUTXO -> m P.Value
 getTxProfit tx txUtxos = do
         addrs <- getWalletAddresses
         let txOuts   = Map.elems txUtxos
@@ -111,7 +118,7 @@ getTxProfit tx txUtxos = do
     where
         getTotalValue addrs getValue getAddr = mconcat . map getValue . filter ((`elem` addrs) . getAddr)
 
-isProfitableTx :: HasWalletProvider m => CardanoTx -> MapUTXO -> m Bool
+isProfitableTx :: HasWallet m => CardanoTx -> MapUTXO -> m Bool
 isProfitableTx tx txUtxos = leq zero <$> getTxProfit tx txUtxos
 
 -- | Create and submit a transaction that produces a specific number of outputs at the target wallet address

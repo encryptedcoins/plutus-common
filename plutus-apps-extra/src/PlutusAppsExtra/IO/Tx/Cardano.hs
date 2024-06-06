@@ -6,77 +6,50 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NumericUnderscores    #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 
 module PlutusAppsExtra.IO.Tx.Cardano where
 
-import           Cardano.Node.Emulator                    (Params)
-import qualified Cardano.Wallet.Api.Client                as Client
-import           Cardano.Wallet.Api.Types                 (ApiSerialisedTransaction (..),
-                                                           ApiSignTransactionPostData (ApiSignTransactionPostData), ApiT (..), ApiTxId (..))
-import           Cardano.Wallet.Api.Types.SchemaMetadata  (TxMetadataSchema (..))
-import           Cardano.Wallet.Primitive.Passphrase      (Passphrase (..))
-import           Control.Concurrent                       (threadDelay)
-import           Control.Lens                             ((^?))
-import           Control.Monad                            (unless, void)
-import           Control.Monad.IO.Class                   (MonadIO (..))
-import           Data.Aeson                               (ToJSON (..))
-import           Data.Aeson.Lens                          (_String, key)
-import           Data.Coerce                              (coerce)
-import qualified Data.Text                                as T
-import           Data.Text.Class                          (FromText (fromText))
-import           Ledger                                   (CardanoTx (..))
-import           Ledger.Tx                                (getCardanoTxId)
-import           Ledger.Typed.Scripts                     (ValidatorTypes (..))
-import           PlutusTx.IsData                          (FromData, ToData)
-import           Prelude                                  hiding ((-))
+import           Control.Concurrent             (threadDelay)
+import           Control.Monad                  (unless, when)
+import           Control.Monad.Catch            (MonadThrow (..))
+import           Control.Monad.IO.Class         (MonadIO (..))
+import           Data.Default                   (Default (..))
+import           Data.Maybe                     (listToMaybe)
+import           Data.Word                      (Word64)
+import           Ledger                         (Slot (..), TxId)
+import           PlutusAppsExtra.Api.Kupo       (CreatedOrSpent (..), KupoRequest (..), SpentOrUnspent (..), getKupoResponseWithHeaders)
+import           PlutusAppsExtra.IO.Tx.Internal (AwaitTxParameters (..))
+import           PlutusAppsExtra.Types.Error    (SubmitTxError (..))
+import           PlutusAppsExtra.Utils.Kupo     (KupoResponse (..), MkPattern (..), SlotWithHeaderHash (..))
+import           Servant.API                    (ResponseHeader (..), getResponse)
+import           Servant.API.ResponseHeaders    (lookupResponseHeader)
 
-import           Cardano.Api                              (BabbageEra, TxMetadataInEra)
-import           PlutusAppsExtra.PlutusApps               (ScriptLookups, TxConstraints, UnbalancedTx (..), mkTxWithParams)
-import           PlutusAppsExtra.IO.Wallet                (HasWallet, getPassphrase, getWalletId)
-import           PlutusAppsExtra.IO.Wallet.Cardano        (getFromEndpointWallet)
-import           PlutusAppsExtra.Types.Error              (MkTxError (..), mkUnbuildableUnbalancedTxError, throwEither, throwMaybe)
-import           PlutusAppsExtra.Utils.Tx                 (addMetadataToCardanoBuildTx, apiSerializedTxToCardanoTx, cardanoTxToSealedTx)
+-- ------------------------------------------- Tx functions -------------------------------------------
 
-------------------------------------------- Tx functions -------------------------------------------
+awaitTxConfirmed :: (MonadThrow m, MonadIO m) => AwaitTxParameters -> TxId -> m ()
+awaitTxConfirmed MkAwaitTxParameters{..} txId = go 0
+  where
+    -- We don't require for only @unspent@. Kupo with @--prune-utxo@ option would still keep spent UTxOs until their spent record is truly immutable (see Kupo docs for more details).
+    req :: KupoRequest SUUnspent CSCreated CSCreated
+    req = def {reqPattern = mkPattern txId}
+    go :: (MonadThrow m, MonadIO m) => Int -> m ()
+    go attempt = do
+        when (attempt >= maxAttempts) $ throwM $ AwaiTxMaxAttemptsExceeded txId
+        responses <- liftIO $ getKupoResponseWithHeaders req
+        let mbResponse = listToMaybe (getResponse responses)
+            rcHeader   = lookupResponseHeader responses :: ResponseHeader "X-Most-Recent-Checkpoint" Word64
+        case (mbResponse, rcHeader) of
 
-signTx :: HasWallet m => CardanoTx -> m CardanoTx
-signTx ctx = do
-    ppUser   <- getPassphrase
-    walletId <- getWalletId
-    asTx     <- sign walletId (coerce ppUser)
-    throwMaybe (ConvertApiSerialisedTxToCardanoTxError asTx) $ apiSerializedTxToCardanoTx asTx
-    where
-        stx = cardanoTxToSealedTx ctx
-        sign walletId pp = getFromEndpointWallet $ Client.signTransaction Client.transactionClient
-            (ApiT walletId)
-            (ApiSignTransactionPostData (ApiT stx) (ApiT pp))
+            (Nothing, _)
+                -> liftIO (threadDelay checkInterval) >> go (attempt + 1)
+      
+            (Just  r, Header slotOfCurrentBlock) 
+                -> unless (fromInteger (getSlot $ swhhSlot $ krCreatedAt r) + slotsToWait <= slotOfCurrentBlock)
+                $ liftIO $ threadDelay checkInterval >> go (attempt + 1)
 
--- Send a balanced transaction to Cardano Wallet Backend and return immediately
-submitTx :: HasWallet m => CardanoTx -> m ()
-submitTx ctx = do
-    let stx = cardanoTxToSealedTx ctx
-    walletId <- getWalletId
-    void $ getFromEndpointWallet $
-        Client.submitTransaction Client.transactionClient
-            (ApiT walletId)
-            (ApiSerialisedTransaction $ ApiT stx)
-
--- Wait until a transaction is confirmed (added to the ledger).
--- If the transaction is never added to the ledger then 'awaitTxConfirmed' never
--- returns
-awaitTxConfirmed :: HasWallet m => CardanoTx -> m ()
-awaitTxConfirmed ctx = go
-    where
-        go = do
-            walletId <- getWalletId
-            hash <- throwEither (CantExtractHashFromCardanoTx ctx) . fromText . T.pack . show  $ getCardanoTxId ctx
-            res <- getFromEndpointWallet $ Client.getTransaction Client.transactionClient
-                (ApiT walletId)
-                (ApiTxId $ ApiT hash)
-                TxMetadataNoSchema
-            unless (confirmedResponse res) $ liftIO (threadDelay 1_000_000) >> go
-        confirmedResponse res = case res ^? key "status"._String of
-            Just "in_ledger" -> True
-            _                -> False
+            (_      , _) -> error "Header 'X-Most-Recent-Checkpoint' isn't seen in response"
+  
+    slotsToWait = 3 * confirmations * 20 

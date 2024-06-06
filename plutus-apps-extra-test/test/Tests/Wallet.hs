@@ -34,7 +34,7 @@ import qualified PlutusAppsExtra.IO.ChainIndex.Kupo  as Kupo
 import           PlutusAppsExtra.IO.Tx               (HasTxProvider (..), getWalletTxOutRefs)
 import qualified PlutusAppsExtra.IO.Tx               as Tx
 import qualified PlutusAppsExtra.IO.Tx.Cardano       as Cardano
-import           PlutusAppsExtra.IO.Wallet           (HasWalletProvider (..))
+import           PlutusAppsExtra.IO.Wallet           (HasWallet (..))
 import qualified PlutusAppsExtra.IO.Wallet           as Wallet
 import           PlutusAppsExtra.IO.Wallet.Internal  (HasWallet (..), genWalletId, restoreWalletFromFile, walletIdFromFile)
 import           PlutusAppsExtra.Utils.Address       (bech32ToAddress, bech32ToKeyHashes)
@@ -47,7 +47,7 @@ instance HasNetworkId IO where
 instance HasWallet IO where
     getRestoredWallet = restoreWalletFromFile "testnet/wallet.json"
 
-instance HasWalletProvider IO where
+instance HasWallet IO where
     getWalletProvider = pure Wallet.Cardano
 
 instance HasChainIndexProvider IO where

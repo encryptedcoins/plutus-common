@@ -47,7 +47,6 @@ library
       PlutusAppsExtra.IO.Tx.Internal
       PlutusAppsExtra.IO.Tx.Maestro
       PlutusAppsExtra.IO.Time
-      PlutusAppsExtra.IO.Wallet.Cardano
       PlutusAppsExtra.IO.Wallet.Internal
       PlutusAppsExtra.IO.Wallet
       PlutusAppsExtra.PlutusApps
@@ -92,7 +91,7 @@ library
       cardano-ledger-shelley-ma              -any,
       cardano-node-emulator                  -any,
       -- cardano-streaming                      -any,
-      cardano-wallet-core                    -any,
+      -- cardano-wallet-core                    -any,
       cborg                                  -any,
       containers                             -any,
       cryptonite                             -any,

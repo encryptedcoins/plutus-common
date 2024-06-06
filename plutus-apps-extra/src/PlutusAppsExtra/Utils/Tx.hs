@@ -18,8 +18,6 @@ import           Cardano.Api.Shelley               (AnyCardanoEra (..), AsType (
 import qualified Cardano.Crypto.DSIGN              as Crypto
 import           Cardano.Ledger.Shelley.API        (VKey (VKey), WitVKey (WitVKey))
 import           Cardano.Node.Emulator.Params      (Params)
-import           Cardano.Wallet.Api.Types          (ApiSerialisedTransaction (..), getApiT)
-import           Cardano.Wallet.Primitive.Types.Tx (SealedTx, cardanoTxIdeallyNoLaterThan, sealedTxFromCardano')
 import           Control.FromSum                   (eitherToMaybe, fromMaybe)
 import           Data.Aeson                        (ToJSON (..))
 import           Data.Aeson.Extras                 (encodeByteString, tryDecode)
@@ -50,15 +48,6 @@ textToCardanoTx txt = do
 cardanoTxToText :: CardanoTx -> Maybe Text
 cardanoTxToText (CardanoTx tx BabbageEraInCardanoMode) = Just $ encodeByteString $ serialiseToCBOR tx
 cardanoTxToText _ = Nothing
-
-apiSerializedTxToCardanoTx :: ApiSerialisedTransaction -> Maybe CardanoTx
-apiSerializedTxToCardanoTx = toSomeTx . toAnyEraTx
-    where
-        toAnyEraTx = cardanoTxIdeallyNoLaterThan (AnyCardanoEra BabbageEra) . getApiT . transaction
-        toSomeTx (InAnyCardanoEra cera tx) = CardanoTx tx <$> toEraInMode cera CardanoMode
-
-cardanoTxToSealedTx :: CardanoTx -> SealedTx
-cardanoTxToSealedTx (CardanoTx tx _) = sealedTxFromCardano' tx
 
 ------------------------ Metadata -------------------------
 

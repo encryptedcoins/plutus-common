@@ -14,8 +14,6 @@ module PlutusAppsExtra.Types.Error where
 
 import           Cardano.Api                    (CardanoMode, FromJSON, NetworkId, NetworkMagic, ToJSON, TxValidationErrorInMode)
 import           Cardano.Node.Emulator          (BalancingError, CardanoLedgerError)
-import           Cardano.Wallet.Api.Types       (ApiSerialisedTransaction)
-import           Cardano.Wallet.Primitive.Types (WalletId)
 import           Control.Exception              (Exception, IOException)
 import           Control.Monad.Catch            (MonadThrow (..))
 import qualified Data.Aeson                     as J
@@ -47,7 +45,7 @@ data MkTxError
     = AllConstructorsFailed [TxBuilderError]
     | CantExtractHashFromCardanoTx CardanoTx
     | CantExtractKeyHashesFromAddress Address
-    | ConvertApiSerialisedTxToCardanoTxError ApiSerialisedTransaction
+    | ConvertApiSerialisedTxToCardanoTxError
     | NotEnoughFunds P.Value
     | FailedToSubmit TxState
     | UnbuildableTxOut DecoratedTxOut ToCardanoError
@@ -74,7 +72,7 @@ mkUnbalancedTxError lookups cons err = MakeUnbalancedTxError err (T.pack $ show 
 data WalletError
     = RestoredWalletParsingError Text
     | UnparsableAddress Text
-    | WalletIdDoesntHaveAnyAssociatedAddresses WalletId
+    | WalletIdDoesntHaveAnyAssociatedAddresses
     | AddressDoesntCorrespondToPubKey Address
     | UnbuildableStakeAddress Text
     deriving (Show, Exception)
@@ -92,9 +90,10 @@ data MaestroError
     | MaestroUnserialisableTx CardanoTx
     deriving (Show, Exception)
 
-data SubmitTxToLocalNodeError
+data SubmitTxError
     = FailedSumbit (TxValidationErrorInMode CardanoMode)
     | NoConnectionToLocalNode IOException
+    | AwaiTxMaxAttemptsExceeded P.TxId
     deriving (Show, Exception)
 
 throwMaybe :: (MonadThrow m, Exception e) => e -> Maybe a -> m a

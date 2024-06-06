@@ -16,6 +16,7 @@ import           Control.FromSum               (eitherToMaybe)
 import           Control.Monad.Catch           (try)
 import           Data.Data                     (Proxy (..))
 import           Data.Default                  (Default (def))
+import           Data.Word                     (Word64)
 import           GHC.Base                      (coerce)
 import           GHC.TypeLits                  (AppendSymbol, KnownSymbol)
 import           Ledger                        (Datum, DatumHash, Script, ScriptHash, Slot, TxId, Validator, ValidatorHash,
@@ -26,7 +27,7 @@ import qualified Plutus.V2.Ledger.Api          as P
 import           PlutusAppsExtra.Types.Error   (ConnectionError)
 import           PlutusAppsExtra.Utils.Kupo    (Kupo (..), KupoOrder, KupoResponse (..), Pattern (..), GetHealthResponse)
 import           PlutusAppsExtra.Utils.Servant (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
-import           Servant.API                   (Capture, Get, JSON, QueryFlag, QueryParam, (:>))
+import           Servant.API                   (Capture, Get, Header, Headers, JSON, QueryFlag, QueryParam, (:>), getResponse)
 import           Servant.Client                (client)
 
 ----------------------------------------------------------- Get Matches (*) -----------------------------------------------------------
@@ -42,7 +43,7 @@ type GetKupoResponse spentOrUnspent createdOrSpentBefore createdOrSpentAfter
     :> QueryParam "asset_name"         (Kupo TokenName)
     :> QueryParam "transaction_id"     (Kupo TxId)
     :> QueryParam "output_index"       Integer
-    :> Get '[JSON] [KupoResponse]
+    :> Get '[JSON] (Headers '[Header "X-Most-Recent-Checkpoint" Word64] [KupoResponse])
 
 data SpentOrUnspent = SUSpent | SUUnspent
 type family SpentOrUnspentSymbol su where
@@ -77,7 +78,11 @@ type IsValidRequest su before after =
     )
 
 getKupoResponse :: forall su before after. IsValidRequest su before after => KupoRequest su before after -> IO [KupoResponse]
-getKupoResponse KupoRequest{..} = getFromEndpointKupo $ client p
+getKupoResponse KupoRequest{..} = getResponse <$> getKupoResponseWithHeaders @su @before @after KupoRequest{..}
+
+getKupoResponseWithHeaders :: forall su before after. IsValidRequest su before after => KupoRequest su before after
+    -> IO (Headers '[Header "X-Most-Recent-Checkpoint" Word64] [KupoResponse])
+getKupoResponseWithHeaders KupoRequest{..} = getFromEndpointKupo $ client p
         reqPattern
         reqSpentOrUnspent
         reqOrder
