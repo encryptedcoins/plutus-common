@@ -1,5 +1,5 @@
-{-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE NumericUnderscores #-}
 
@@ -7,11 +7,12 @@ module PlutusAppsExtra.IO.Tx.Internal where
 
 import           Cardano.Address.Derivation (XPrv)
 import           Cardano.Api                (SigningKey (..))
+import           Cardano.Api.Tx.Sign        (ShelleyWitnessSigningKey (WitnessPaymentExtendedKey))
 import           Data.Aeson                 (FromJSON, ToJSON)
 import           Data.Default               (Default (..))
 import           Data.Word                  (Word64)
 import           GHC.Generics               (Generic)
-import           Ledger                     (CardanoTx (..))
+import           Ledger                     (CardanoTx (..), addCardanoTxWitness)
 
 data TxState = Rejected | Pending | Failed | Timedout | Onchain | Rolledback
     deriving (Show, Read, Eq, Generic, FromJSON, ToJSON)
@@ -34,5 +35,5 @@ instance Default AwaitTxParameters where
           , confirmations = 1
           }
 
--- addCardanoTxSignature :: XPrv -> CardanoTx -> CardanoTx
--- addCardanoTxSignature privKey = addCardanoTxWitness (WitnessPaymentExtendedKey $  PaymentExtendedSigningKey privKey)
+addCardanoTxSignature :: XPrv -> CardanoTx -> CardanoTx
+addCardanoTxSignature privKey = addCardanoTxWitness (WitnessPaymentExtendedKey $  PaymentExtendedSigningKey privKey)

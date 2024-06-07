@@ -1,6 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RecordWildCards    #-}
 
 module PlutusAppsExtra.IO.Maestro
@@ -18,14 +17,15 @@ import           Data.Coerce                   (coerce)
 import           Data.Map                      (Map)
 import qualified Data.Map                      as Map
 import           Data.Text                     (Text)
-import           Ledger                        (PubKeyHash, ScriptHash (..), TxId, TxOutRef, Validator (..), ValidatorHash (..), Versioned)
-import           Plutus.V2.Ledger.Api          (CurrencySymbol, TokenName)
+import           Ledger                        (PubKeyHash, ScriptHash (..), TxOutRef, Validator (..), ValidatorHash (..), Versioned)
 import           PlutusAppsExtra.Api.Maestro   (MonadMaestro)
 import qualified PlutusAppsExtra.Api.Maestro   as Api
 import           PlutusAppsExtra.Utils.Maestro (AccountAddressesHoldingAssetsResponse (..), AssetMintsAndBurnsResponse, Cursor, HasCursor,
                                                 ScriptByHashResponse (..), TxDetailsResponse, TxOutputResponse, TxStateResponse,
                                                 UtxosAtAddressResponse, getCursor)
 import           PlutusAppsExtra.Utils.Servant (handle404Maybe)
+import qualified PlutusLedgerApi.V1            as PV1
+import           PlutusLedgerApi.V3            (CurrencySymbol, TokenName)
 
 getAccountAddressesHoldingAssets :: MonadMaestro m => CurrencySymbol -> TokenName -> m (Map PubKeyHash Integer)
 getAccountAddressesHoldingAssets cs name = fmap (Map.fromList . concatMap (\AccountAddressesHoldingAssetsResponse{..} -> aaharData))
@@ -34,13 +34,13 @@ getAccountAddressesHoldingAssets cs name = fmap (Map.fromList . concatMap (\Acco
 getAssetMintsAndBurns :: MonadMaestro m => CurrencySymbol -> TokenName -> m [AssetMintsAndBurnsResponse]
 getAssetMintsAndBurns cs name = foldPages $ Api.getAssetMintsAndBurns cs name
 
-getTxDetails :: MonadMaestro m => TxId -> m (Maybe TxDetailsResponse)
+getTxDetails :: MonadMaestro m => PV1.TxId -> m (Maybe TxDetailsResponse)
 getTxDetails = handle404Maybe . Api.getTxDetails
 
 getTxOutput :: MonadMaestro m => TxOutRef -> m (Maybe TxOutputResponse)
 getTxOutput = handle404Maybe . Api.getTxOutput
 
-getTxState :: MonadMaestro m => TxId -> m (Maybe TxStateResponse)
+getTxState :: MonadMaestro m => PV1.TxId -> m (Maybe TxStateResponse)
 getTxState = handle404Maybe . Api.getTxState
 
 getUtxosAtAddress :: MonadMaestro m => Text -> Bool -> m [UtxosAtAddressResponse]

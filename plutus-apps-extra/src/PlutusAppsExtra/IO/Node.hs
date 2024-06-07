@@ -5,21 +5,25 @@
 
 module PlutusAppsExtra.IO.Node where
 
-import           Cardano.Api.Shelley                                 (CardanoMode, ConsensusModeParams (..), EpochSlots (..),
+import qualified Cardano.Api                                         as Api
+import qualified Cardano.Api                                         as C
+import           Cardano.Api.Shelley                                 (ConsensusModeParams (..), EpochSlots (..),
                                                                       LocalChainSyncClient (NoLocalChainSyncClient),
-                                                                      LocalNodeClientProtocols (..), LocalNodeConnectInfo (..),
-                                                                      NetworkId, TxInMode (..), TxValidationErrorInMode,
-                                                                      connectToLocalNode)
+                                                                      LocalNodeClientProtocols (..), LocalNodeConnectInfo (..), NetworkId,
+                                                                      TxInMode (..), connectToLocalNode)
 import           Control.Concurrent.STM                              (atomically, newEmptyTMVarIO, putTMVar, takeTMVar)
 import           Control.Monad.Catch                                 (Exception (fromException), MonadCatch, handle, throwM)
+import           Control.Monad.IO.Class                              (MonadIO (..))
 import           Data.Data                                           (Proxy (..))
+import           Data.Maybe                                          (fromMaybe)
+import           Data.String                                         (IsString (..))
 import           GHC.IO.Exception                                    (IOErrorType (NoSuchThing), IOException (..))
 import           Ledger.Tx                                           (CardanoTx (..))
-import           Ouroboros.Network.Protocol.LocalTxSubmission.Client (SubmitResult (..))
 import qualified Ouroboros.Network.Protocol.LocalTxSubmission.Client as Net.Tx
 import           PlutusAppsExtra.Types.Error                         (SubmitTxError (..))
+import           PlutusAppsExtra.Utils.Network                       (networkIdToEpochSlots)
 import           PlutusAppsExtra.Utils.Servant                       (getFromEndpointOnPort)
-import           Servant.API                                         (Get, (:>), OctetStream, NoContent)
+import           Servant.API                                         (Get, NoContent, OctetStream, (:>))
 import qualified Servant.Client                                      as Servant
 
 sumbitTxToNodeLocal

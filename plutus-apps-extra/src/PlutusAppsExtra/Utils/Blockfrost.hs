@@ -30,15 +30,16 @@ import           Data.Text                     (Text)
 import qualified Data.Text                     as T
 import qualified Data.Text.Encoding            as T
 import           Deriving.Aeson                (CamelToSnake, CustomJSON (CustomJSON), FieldLabelModifier, Generic, StripPrefix)
-import           Ledger                        (Address, Datum (..), DatumHash (..), ScriptHash, TxId (..), ValidatorHash)
+import           Ledger                        (Address, Datum (..), DatumHash (..), ScriptHash, TxId (..), ValidatorHash (..))
 import           Plutus.Script.Utils.Value     (AssetClass (..), TokenName (..))
-import           Plutus.V1.Ledger.Api          (BuiltinByteString, CurrencySymbol (..), fromBuiltin, toBuiltin)
-import qualified Plutus.V2.Ledger.Api          as P
 import           PlutusAppsExtra.Types.Error   (BlockfrostError (..))
 import           PlutusAppsExtra.Utils.Address (addressToBech32, bech32ToAddress)
+import qualified PlutusLedgerApi.V1            as PV1
+import           PlutusLedgerApi.V3            (BuiltinByteString, CurrencySymbol (..), fromBuiltin, toBuiltin)
+import qualified PlutusLedgerApi.V3            as P
 import           Servant.API                   (ToHttpApiData (..))
-import           Text.Hex                      (decodeHex, encodeHex)
 import qualified Text.Hex                      as T
+import           Text.Hex                      (decodeHex, encodeHex)
 import           Text.Read                     (readMaybe)
 
 data AccDelegationHistoryResponse = AccDelegationHistoryResponse
@@ -92,14 +93,14 @@ instance FromJSON TxDelegationsCertsResponse where
         pure TxDelegationsCertsResponse{..}
 
 data TxUtxoResponse = TxUtxoResponse
-    { turTxHash  :: TxId
+    { turTxHash  :: PV1.TxId
     , turInputs  :: [TxUtxoResponseInput]
     , turOutputs :: [TxUtxoResponseOutput]
     } deriving (Show, Eq)
 
 instance FromJSON TxUtxoResponse where
     parseJSON = withObject "Tx UTXOs response" $ \o -> do
-        turTxHash  <- o .: "hash" <&> TxId
+        turTxHash  <- o .: "hash" <&> PV1.TxId
         turInputs  <- o .: "inputs"
         turOutputs <- o .: "outputs"
         pure TxUtxoResponse{..}

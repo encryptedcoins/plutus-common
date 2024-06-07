@@ -4,24 +4,23 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoImplicitPrelude     #-}
-{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 
 module PlutusAppsExtra.Constraints.Balance where
 
-import           Cardano.Api                              (BabbageEra, EraInMode (..), TxMetadataInEra (..))
-import           Cardano.Node.Emulator                    (Params (..))
-import           Cardano.Node.Emulator.Fee                (makeAutoBalancedTransactionWithUtxoProvider, utxoProviderFromWalletOutputs)
-import           Control.Monad.Catch                      (MonadThrow (..))
-import           Ledger                                   (Address, CardanoTx (..))
-import           Ledger.Index                             (UtxoIndex (..))
-import           Ledger.Tx.CardanoAPI                     (toCardanoAddressInEra)
-import           Ledger.Typed.Scripts                     (Any, ValidatorTypes (..))
-import           PlutusAppsExtra.PlutusApps               (ScriptLookups (..), TxConstraints, UnbalancedTx (..), mkTxWithParams)
-import           PlutusAppsExtra.Types.Error              (BalanceExternalTxError (..), mkUnbalancedTxError, throwEither)
-import           PlutusAppsExtra.Utils.ChainIndex         (MapUTXO, toCardanoUtxo)
-import           PlutusAppsExtra.Utils.Tx                 (addMetadataToCardanoBuildTx)
+import           Cardano.Api                         (ConwayEra, ShelleyBasedEra (ShelleyBasedEraConway), TxMetadataInEra (..))
+import           Cardano.Node.Emulator               (Params (..))
+import           Cardano.Node.Emulator.Internal.Node (Params (..), makeAutoBalancedTransactionWithUtxoProvider,
+                                                      utxoProviderFromWalletOutputs)
+import           Control.Monad.Catch                 (MonadThrow (..))
+import           Ledger                              (Address, CardanoTx (..), fromDecoratedIndex)
+import           Ledger.Tx.CardanoAPI                (toCardanoAddressInEra)
+import           Ledger.Typed.Scripts                (Any, ValidatorTypes (..))
+import           PlutusAppsExtra.PlutusApps          (ScriptLookups (..), TxConstraints, UnbalancedTx (UnbalancedCardanoTx), mkTxWithParams)
+import           PlutusAppsExtra.Types.Error         (BalanceExternalTxError (..), mkUnbalancedTxError, throwEither)
+import           PlutusAppsExtra.Utils.ChainIndex    (MapUTXO)
+import           PlutusAppsExtra.Utils.Tx            (addMetadataToCardanoBuildTx)
 import           Prelude
 
 balanceExternalTx :: (MonadThrow m)
@@ -30,22 +29,23 @@ balanceExternalTx :: (MonadThrow m)
                   -> Address
                   -> ScriptLookups Any
                   -> TxConstraints (RedeemerType Any) (DatumType Any)
-                  -> Maybe (TxMetadataInEra BabbageEra)
+                  -> Maybe (TxMetadataInEra ConwayEra)
                   -> m CardanoTx
 balanceExternalTx params walletUTXO changeAddress lookups cons mbMetadata = do
-    unbalancedTx@(UnbalancedCardanoTx cbt _) <- mkUnbalancedTx
-    utxoIndex       <- UtxoIndex <$> toCardanoUtxo params (slTxOutputs lookups)
+    (UnbalancedCardanoTx cbt _) <- mkUnbalancedTx
+    utxoIndex       <- either (throwM . UtxoIndexConversionError) pure $ fromDecoratedIndex networkId $ (walletUTXO <>) $ slTxOutputs lookups
     cAddress        <- mkAddressInEra
-    walletUTXOIndex <- toCardanoUtxo params walletUTXO
-    let utxoProvider = either (throwM . MakeUtxoProviderError unbalancedTx) pure . utxoProviderFromWalletOutputs walletUTXOIndex
+    let utxoProvider = either (throwM . MakeUtxoProviderError) pure
+                     . utxoProviderFromWalletOutputs utxoIndex cbtWithMeta
         cbtWithMeta = addMetadataToCardanoBuildTx mbMetadata cbt
-    (`CardanoTx` BabbageEraInCardanoMode) <$> makeAutoBalancedTransactionWithUtxoProvider
+    (`CardanoTx` ShelleyBasedEraConway) <$> makeAutoBalancedTransactionWithUtxoProvider
         params
         utxoIndex
         cAddress
         utxoProvider
-        (throwM . MakeAutoBalancedTxError unbalancedTx)
+        (throwM . MakeAutoBalancedTxError)
         cbtWithMeta
   where
+    networkId = pNetworkId params
     mkUnbalancedTx = either (throwM . mkUnbalancedTxError lookups cons) pure $ mkTxWithParams params lookups cons
-    mkAddressInEra = throwEither (NonBabbageEraChangeAddress changeAddress) $ toCardanoAddressInEra (pNetworkId params) changeAddress
+    mkAddressInEra = throwEither (NonBabbageEraChangeAddress changeAddress) $ toCardanoAddressInEra networkId changeAddress

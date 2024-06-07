@@ -10,34 +10,30 @@
 
 module PlutusAppsExtra.Constraints.OffChain where
 
-import           Control.Monad                               (liftM2, when)
-import           Control.Monad.State                         (MonadState (..))
-import           Data.Functor                                (($>))
-import           Data.List                                   (find)
-import qualified Data.Map                                    as Map
-import           Data.Maybe                                  (isJust, isNothing)
-import           Data.Text                                   (Text)
-import           Ledger                                      (DecoratedTxOut (..), Slot, Versioned, mintingPolicyHash, validatorHash)
-import           Ledger.Address                              (PaymentPubKeyHash)
-import           Plutus.V2.Ledger.Api                        (Address (Address), Credential (PubKeyCredential, ScriptCredential),
-                                                              Datum (Datum), MintingPolicy (..), POSIXTime, PubKeyHash,
-                                                              Redeemer (Redeemer), StakingCredential, ToData (..), TxOutRef,
-                                                              Validator (..), ValidatorHash)
-import qualified Plutus.V2.Ledger.Api                        as P                                                     
+import           Control.Monad                    (liftM2, when)
+import           Control.Monad.State              (MonadState (..))
+import           Data.Functor                     (($>))
+import           Data.List                        (find)
+import qualified Data.Map                         as Map
+import           Data.Maybe                       (isJust, isNothing)
+import           Data.Text                        (Text)
+import           Ledger                           (DecoratedTxOut (..), MintingPolicy (..), POSIXTime, Slot, Validator (getValidator),
+                                                   Versioned, mintingPolicyHash, validatorHash)
+import           Ledger.Address                   (PaymentPubKeyHash)
+import           PlutusAppsExtra.PlutusApps       (TxConstraint (MustPayToAddress), TxOutDatum, interval, mintingPolicy, mustBeSignedBy,
+                                                   mustMintValueWithRedeemerAndReference, mustPayToAddressWithReferenceMintingPolicy,
+                                                   mustPayToAddressWithReferenceValidator, mustReferenceOutput, mustSpendPubKeyOutput,
+                                                   mustSpendScriptOutput, mustSpendScriptOutputWithReference, mustUseOutputAsCollateral,
+                                                   mustValidateInSlotRange, mustValidateInTimeRange, otherData, otherScript, singleton,
+                                                   unspentOutputs)
+import           PlutusAppsExtra.Types.Error      (TxBuilderError (..))
+import           PlutusAppsExtra.Types.Tx         (TransactionBuilder, TxConstructor (..), getBuilderResult)
+import           PlutusAppsExtra.Utils.ChainIndex (filterPubKeyUtxos, filterScriptUtxos)
+import           PlutusLedgerApi.V1               (TxOutRef)
+import           PlutusLedgerApi.V3               (Address (Address), Credential (PubKeyCredential, ScriptCredential), Datum (Datum),
+                                                   PubKeyHash, Redeemer (Redeemer), StakingCredential, ToData (..))
+import qualified PlutusLedgerApi.V3               as P
 import           Prelude
-
-import           PlutusAppsExtra.PlutusApps                  (mintingPolicy, otherData, otherScript, unspentOutputs,
-                                                              TxConstraint (MustPayToAddress), mustBeSignedBy,
-                                                              mustPayToAddressWithReferenceMintingPolicy,
-                                                              mustPayToAddressWithReferenceValidator, mustReferenceOutput,
-                                                              mustSpendPubKeyOutput, mustSpendScriptOutput,
-                                                              mustSpendScriptOutputWithReference, mustUseOutputAsCollateral,
-                                                              mustValidateInSlotRange, mustValidateInTimeRange,
-                                                              TxOutDatum, mustMintValueWithRedeemerAndReference, singleton,
-                                                              interval)
-import           PlutusAppsExtra.Types.Error                 (TxBuilderError (..))
-import           PlutusAppsExtra.Types.Tx                    (TransactionBuilder, TxConstructor (..), getBuilderResult)
-import           PlutusAppsExtra.Utils.ChainIndex            (filterPubKeyUtxos, filterScriptUtxos)
 
 (<&&>) :: (Semigroup a, Monad m) => m a -> m a -> m a
 (<&&>) = liftM2 (<>)
@@ -166,7 +162,7 @@ utxoProducedPublicKeyTx pkh skc val dat =
     let addr = Address (PubKeyCredential pkh) skc
     in utxoProducedTx addr val dat
 
-utxoProducedScriptTx :: ValidatorHash -> Maybe StakingCredential -> P.Value -> TxOutDatum Datum -> TransactionBuilder ()
+utxoProducedScriptTx :: P.ScriptHash -> Maybe StakingCredential -> P.Value -> TxOutDatum Datum -> TransactionBuilder ()
 utxoProducedScriptTx vh skc val dat =
     let addr = Address (ScriptCredential vh) skc
     in utxoProducedTx addr val (Just dat)

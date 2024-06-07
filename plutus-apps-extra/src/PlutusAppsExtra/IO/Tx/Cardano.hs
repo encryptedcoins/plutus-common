@@ -1,10 +1,8 @@
-{-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NumericUnderscores    #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -19,17 +17,18 @@ import           Control.Monad.IO.Class         (MonadIO (..))
 import           Data.Default                   (Default (..))
 import           Data.Maybe                     (listToMaybe)
 import           Data.Word                      (Word64)
-import           Ledger                         (Slot (..), TxId)
+import           Ledger                         (Slot (..))
 import           PlutusAppsExtra.Api.Kupo       (CreatedOrSpent (..), KupoRequest (..), SpentOrUnspent (..), getKupoResponseWithHeaders)
 import           PlutusAppsExtra.IO.Tx.Internal (AwaitTxParameters (..))
 import           PlutusAppsExtra.Types.Error    (SubmitTxError (..))
 import           PlutusAppsExtra.Utils.Kupo     (KupoResponse (..), MkPattern (..), SlotWithHeaderHash (..))
+import qualified PlutusLedgerApi.V1             as PV1
 import           Servant.API                    (ResponseHeader (..), getResponse)
 import           Servant.API.ResponseHeaders    (lookupResponseHeader)
 
 -- ------------------------------------------- Tx functions -------------------------------------------
 
-awaitTxConfirmed :: (MonadThrow m, MonadIO m) => AwaitTxParameters -> TxId -> m ()
+awaitTxConfirmed :: (MonadThrow m, MonadIO m) => AwaitTxParameters -> PV1.TxId -> m ()
 awaitTxConfirmed MkAwaitTxParameters{..} txId = go 0
   where
     -- We don't require for only @unspent@. Kupo with @--prune-utxo@ option would still keep spent UTxOs until their spent record is truly immutable (see Kupo docs for more details).

@@ -1,7 +1,6 @@
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -33,14 +32,15 @@ import           GHC.Records                    (HasField (..))
 import           Ledger                         (Address, Datum (..), DatumFromQuery (..), DatumHash, Language (..), PubKeyHash (..),
                                                  Script, ScriptHash (..), Slot (..), StakePubKeyHash (..), TxId (..), Versioned (..))
 import           Ledger.Scripts                 (Script (..))
-import           Plutus.V1.Ledger.Api           (BuiltinByteString, CurrencySymbol (..), TokenName (..), fromBuiltin, toBuiltin)
-import           Plutus.V1.Ledger.Value         (AssetClass (..))
-import           PlutusAppsExtra.IO.Tx.Internal
+import           Plutus.Script.Utils.Value      (AssetClass (..))
+import           PlutusAppsExtra.IO.Tx.Internal (TxState)
 import           PlutusAppsExtra.Utils.Address  (bech32ToAddress, bech32ToStakePubKeyHash)
 import           PlutusAppsExtra.Utils.Scripts  (scriptFromCBOR)
+import qualified PlutusLedgerApi.V1             as PV1
+import           PlutusLedgerApi.V3             (BuiltinByteString, CurrencySymbol (..), TokenName (..), fromBuiltin, toBuiltin)
 import           Servant.API                    (ToHttpApiData (..))
-import           Text.Hex                       (decodeHex, encodeHex)
 import qualified Text.Hex                       as T
+import           Text.Hex                       (decodeHex, encodeHex)
 import           Text.Read                      (readMaybe)
 
 newtype Maestro a = Maestro {unMaestro :: a}
@@ -170,7 +170,7 @@ data TxStateResponse = TxStateResponse
     { tsrBlock     :: Maybe Int
     , tsrState     :: TxState
     , tsrTimestamp :: Time.UTCTime
-    , tsrTxHash    :: TxId
+    , tsrTxHash    :: PV1.TxId
     } deriving (Show, Eq)
 
 instance FromJSON TxStateResponse where
@@ -180,7 +180,7 @@ instance FromJSON TxStateResponse where
             num -> maybe (fail "read block") (pure . Just) $ readMaybe $ T.unpack num
         tsrState     <- (o .:  "state" >>=) $ J.withText "state" $ maybe (fail "read txState") pure . readMaybe . T.unpack
         tsrTimestamp <- o .: "timestamp"
-        tsrTxHash    <- o .: "transaction_hash"  <&> TxId
+        tsrTxHash    <- o .: "transaction_hash"  <&> PV1.TxId
         pure TxStateResponse{..}
 
 data UtxosAtAddressResponse = UtxosAtAddressResponse
@@ -192,7 +192,7 @@ instance HasField "cursor" UtxosAtAddressResponse (Maybe Cursor) where
     getField = uaarCursor
 
 data UtxosAtAddressData = UtxosAtAddressData
-    { uaadTxHash          :: TxId
+    { uaadTxHash          :: PV1.TxId
     , uaadIndex           :: Integer
     , uaadAddress         :: Address
     , uaadValue           :: C.Value
@@ -208,7 +208,7 @@ instance FromJSON UtxosAtAddressResponse where
 
 instance FromJSON UtxosAtAddressData where
     parseJSON = withObject "UtxosAtAddressData" $ \o -> do
-        uaadTxHash          <- o .: "tx_hash" <&> TxId
+        uaadTxHash          <- o .: "tx_hash" <&> PV1.TxId
         uaadIndex           <- o .: "index"
         uaadAddress         <- o .: "address" >>= maybe (fail "bech32ToAddress TxDetailsOutput") pure . bech32ToAddress
         uaadValue           <- o .: "assets" <&> mconcat . fmap unMaestro
@@ -216,7 +216,7 @@ instance FromJSON UtxosAtAddressData where
         uaadReferenceScript <- o .:? "reference_script" <&> fmap unMaestro
         pure UtxosAtAddressData{..}
 
-deriving via BuiltinByteString instance FromJSON (Maestro TxId)
+deriving via BuiltinByteString instance FromJSON (Maestro PV1.TxId)
 
 instance FromJSON (Maestro C.Value) where
     parseJSON = withObject "Bf Value" $ \o -> (,) <$> o .: "unit" <*> o .: "amount" >>= \case
@@ -254,10 +254,10 @@ instance FromJSON (Maestro (Versioned Script)) where
             _                   -> fail "script language"
         pure $ Maestro $ Versioned script lang
 
-instance ToHttpApiData (Maestro TxId) where
+instance ToHttpApiData (Maestro PV1.TxId) where
     toUrlPiece = encodeHex . fromBuiltin @BuiltinByteString . coerce
 
-deriving via (Maestro TxId) instance ToHttpApiData (Maestro ScriptHash)
+deriving via (Maestro PV1.TxId) instance ToHttpApiData (Maestro ScriptHash)
 
 instance ToHttpApiData (Maestro AssetClass) where
     toUrlPiece (Maestro (AssetClass (CurrencySymbol cs, TokenName token))) = T.encodeHex (fromBuiltin cs) <> T.decodeUtf8 (fromBuiltin token)

@@ -11,7 +11,6 @@
 module PlutusAppsExtra.IO.ChainIndex.Kupo where
 
 import           Cardano.Api                      (NetworkId, writeFileJSON)
-import           Control.Applicative              (Applicative (..))
 import           Control.Concurrent               (threadDelay)
 import           Control.Exception                (AsyncException (UserInterrupt), Exception (..), SomeException)
 import           Control.Lens                     (preview, (.~), (<&>), (^?))
@@ -20,25 +19,25 @@ import           Control.Monad.Catch              (MonadCatch, MonadThrow (throw
 import           Control.Monad.IO.Class           (MonadIO (liftIO))
 import           Data.Aeson                       (FromJSON (parseJSON), ToJSON, eitherDecodeFileStrict)
 import           Data.Aeson.Types                 (parseMaybe)
+import           Data.Coerce                      (coerce)
 import           Data.Default                     (Default (def))
 import qualified Data.Map                         as Map
-import           Data.Maybe                       (catMaybes, fromMaybe, listToMaybe)
+import           Data.Maybe                       (catMaybes, fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import           Data.Time                        (getCurrentTime)
-import           Ledger                           (Address (..), Datum (..), DatumFromQuery (..), DecoratedTxOut (..),
-                                                   Slot (getSlot), TxOutRef (..), decoratedTxOutDatum,
-                                                   decoratedTxOutReferenceScript, decoratedTxOutValidator,
-                                                   decoratedTxOutValidatorHash, fromCardanoValue)
-import           Plutus.V2.Ledger.Api             (Credential (..), CurrencySymbol, ToData (..), TokenName)
-import qualified Plutus.V2.Ledger.Api             as P
+import           Ledger                           (Address (..), Datum (..), DatumFromQuery (..), DecoratedTxOut (..), Slot (getSlot),
+                                                   TxOutRef (..), ValidatorHash (..), decoratedTxOutDatum, decoratedTxOutReferenceScript,
+                                                   decoratedTxOutValidator, decoratedTxOutValidatorHash, fromCardanoValue)
 import           PlutusAppsExtra.Api.Kupo         (CreatedOrSpent (..), IsValidRequest, KupoRequest (..), SpentOrUnspent (..),
                                                    getDatumByHash, getKupoResponse, getScriptByHash, getValidatorByHash)
 import           PlutusAppsExtra.Types.Tx         (UtxoRequirement (..), UtxoRequirements)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 import qualified PlutusAppsExtra.Utils.Datum      as Datum
 import           PlutusAppsExtra.Utils.Kupo       (KupoResponse (..), MkPattern (..), fromKupoDatumType, kupoResponseToJSON)
+import           PlutusLedgerApi.V3               (Credential (..), CurrencySymbol, ToData (..), TokenName)
+import qualified PlutusLedgerApi.V3               as P
 import qualified PlutusTx.AssocMap                as PAM
 
 ----------------------------------------------------------- Hi-level API -----------------------------------------------------------
@@ -93,7 +92,7 @@ partiallyGet newtworkId ((. T.pack) -> mkLog) slotFrom slotTo slotDelta req fp =
                 let req' = req{reqCreatedOrSpentAfter = Just f, reqCreatedOrSpentBefore = Just t} :: KupoRequest su b a
                 getKupoResponse req'
         withResultSaving fileName getResponse
-    pure $ catMaybes $ parseMaybe parseJSON <$> resValue
+    pure $ mapMaybe (parseMaybe parseJSON) resValue
     where
         reloadHandler ma = (`handle` ma) $ \e -> case fromException e of
             Just UserInterrupt -> throwM UserInterrupt
@@ -158,7 +157,7 @@ mkUnevaluatedDecoratedTxOut KupoResponse{..} =
         _decoratedTxOutValidator         = Nothing
     in case addressCredential krAddress of
         PubKeyCredential _decoratedTxOutPubKeyHash    -> pure PublicKeyDecoratedTxOut{..}
-        ScriptCredential _decoratedTxOutValidatorHash -> do
+        ScriptCredential (coerce -> _decoratedTxOutValidatorHash) -> do
             _decoratedTxOutScriptDatum <- _decoratedTxOutPubKeyDatum
             pure ScriptDecoratedTxOut{..}
     where

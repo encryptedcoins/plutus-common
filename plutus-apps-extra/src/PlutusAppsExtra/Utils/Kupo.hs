@@ -1,12 +1,13 @@
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE DerivingVia        #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE OverloadedLists    #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DerivingVia         #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedLists     #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module PlutusAppsExtra.Utils.Kupo where
 
@@ -23,18 +24,16 @@ import           Data.Coerce                   (coerce)
 import           Data.Functor                  ((<&>))
 import qualified Data.Text                     as T
 import           GHC.Generics                  (Generic)
-import           Ledger                        (Address (..), Datum (..), DatumFromQuery (..), DatumHash (..), Language (..),
-                                                NetworkId, Script, ScriptHash (..), Slot (Slot), TxId (..), TxOutRef (..),
-                                                Validator (..), ValidatorHash (..), Versioned (..), fromCardanoValue,
-                                                toCardanoValue, adaOnlyValue)
+import           Ledger                        (Address (..), Datum (..), DatumFromQuery (..), DatumHash (..), Language (..), NetworkId,
+                                                Script, ScriptHash (..), Slot (Slot), TxOutRef (..), Validator (..), ValidatorHash (..),
+                                                Versioned (..), adaOnlyValue, fromCardanoValue, toCardanoValue)
 import           Plutus.Script.Utils.Ada       (lovelaceOf, toValue)
-import           Plutus.Script.Utils.Value     (AssetClass (..))
-import           Plutus.V1.Ledger.Api          (Credential (..), CurrencySymbol (..), StakingCredential (..), TokenName,
-                                                fromBuiltin, toBuiltin)
-import           Plutus.V1.Ledger.Value        (flattenValue)
-import           Plutus.V2.Ledger.Api          (TokenName (..), Value (..))
+import           Plutus.Script.Utils.Value     (AssetClass (..), flattenValue)
 import           PlutusAppsExtra.Utils.Address (addressToBech32, bech32ToAddress)
-import qualified PlutusTx.AssocMap             as PMap
+import qualified PlutusLedgerApi.V1            as PV1
+import           PlutusLedgerApi.V3            (Credential (..), CurrencySymbol (..), StakingCredential (..), TokenName (..), Value (..),
+                                                fromBuiltin, toBuiltin)
+import qualified PlutusTx.AssocMap             as PMAP
 import           PlutusTx.Builtins             (BuiltinByteString)
 import           Servant.API                   (ToHttpApiData (..))
 import           Text.Hex                      (decodeHex, encodeHex)
@@ -82,10 +81,10 @@ instance MkPattern CurrencySymbol where
 instance MkPattern AssetClass where
     mkPattern = AssetPattern . uncurry KupoAsset . fmap Just . unAssetClass
 
-data KupoTxOutRef = KupoTxOutRef TxId (Maybe Integer)
+data KupoTxOutRef = KupoTxOutRef PV1.TxId (Maybe Integer)
     deriving (Show, Eq)
 
-instance MkPattern TxId where
+instance MkPattern PV1.TxId where
     mkPattern = TxOutRefPattern . (`KupoTxOutRef` Nothing)
 
 instance MkPattern TxOutRef where
@@ -94,7 +93,7 @@ instance MkPattern TxOutRef where
 ----------------------------------------------- FromJSON instances -----------------------------------------------
 
 data KupoResponse = KupoResponse
-    { krTxId        :: !TxId
+    { krTxId        :: !PV1.TxId
     , krOutputIndex :: !Integer
     , krAddress     :: !Address
     , krValue       :: !C.Value
@@ -114,13 +113,13 @@ fromKupoDatumType = \case
     KupoDatumInline -> DatumInline
 
 data SlotWithHeaderHash = SlotWithHeaderHash
-    { swhhSlot :: Slot
+    { swhhSlot       :: Slot
     , swhhHeaderHash :: HeaderHash
     } deriving (Show, Eq, Generic)
 
 instance FromJSON KupoResponse where
     parseJSON = withObject "KupoResponse" $ \o -> do
-        krTxId          <- o .: "transaction_id" <&> TxId
+        krTxId :: PV1.TxId <- o .: "transaction_id" <&> PV1.TxId
         krOutputIndex   <- o .: "output_index"
         krAddress       <- o .: "address" >>= maybe (fail "bech32ToAddress") pure . bech32ToAddress
         Kupo krValue    <- o .: "value"
@@ -144,7 +143,7 @@ instance FromJSON KupoResponse where
 
 kupoResponseToJSON :: NetworkId -> KupoResponse -> J.Value
 kupoResponseToJSON networkId KupoResponse{..} = J.object
-    ["transaction_id" .= getTxId krTxId
+    ["transaction_id" .= PV1.getTxId krTxId
     , "output_index"  .= krOutputIndex
     , "address"       .= addressToBech32 networkId krAddress
     , "datum_hash"    .= krDatumHash
@@ -199,16 +198,16 @@ instance FromJSON (Kupo C.Value) where
             either (fail . show) (pure . Kupo) $ toCardanoValue $ coins <> assets
         where
             parseAssets = fmap mconcat . traverse parseAsset . J.toList
-            parseAsset (asset, amount) = Value . PMap.fromList <$> do
+            parseAsset (asset, amount) = Value . PMAP.safeFromList <$> do
                 amount' <- parseJSON amount
                 case span (/= '.') (J.toString asset) of
                     (cs, '.' : name) -> do
                         name'   <- TokenName      <$> toBbs name
                         cs'     <- CurrencySymbol <$> toBbs cs
-                        pure [(cs', PMap.singleton name' amount')]
+                        pure [(cs', PMAP.singleton name' amount')]
                     (cs, _) -> do
                         cs'     <- CurrencySymbol <$> toBbs cs
-                        pure [(cs', PMap.singleton "" amount')]
+                        pure [(cs', PMAP.singleton "" amount')]
             toBbs = maybe (fail "not a hex") (pure . toBuiltin) . decodeHex . T.pack
 
 data GetHealthResponse = GetHealthResponse
@@ -249,7 +248,7 @@ instance ToHttpApiData Pattern where
 
 deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo CurrencySymbol)
 deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo TokenName)
-deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo TxId)
+deriving via (Kupo ScriptHash) instance ToHttpApiData (Kupo PV1.TxId)
 
 instance ToHttpApiData (Kupo ScriptHash) where
     toUrlPiece = encodeHex . fromBuiltin @BuiltinByteString . coerce

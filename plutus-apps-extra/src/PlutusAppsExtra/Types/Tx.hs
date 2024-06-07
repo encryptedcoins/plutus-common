@@ -18,25 +18,25 @@ import           Data.Set                         (Set)
 import qualified Data.Set                         as Set
 import           GHC.Generics                     (Generic)
 import           Ledger.Typed.Scripts             (Any, ValidatorTypes (..))
-import           Plutus.V2.Ledger.Api             (POSIXTime)
-import           PlutusTx.Prelude                 hiding (Semigroup, fromInteger, mapMaybe, mempty, toList, unless, (<$>))
+import           PlutusLedgerApi.V3               (POSIXTime)
+import           PlutusTx.Prelude                 (Functor (fmap), Maybe (Just), find, isJust, map, ($), (.))
 import           Prelude                          (Monoid (mempty), Show)
 import qualified Prelude                          as Haskell
 
-import           PlutusAppsExtra.PlutusApps       (ScriptLookups, TxConstraints)
 import           PlutusAppsExtra.IO.Time          (HasClock (..))
+import           PlutusAppsExtra.PlutusApps       (ScriptLookups, TxConstraints)
 import           PlutusAppsExtra.Types.Error      (TxBuilderError)
 import           PlutusAppsExtra.Utils.ChainIndex (MapUTXO)
 
 data TxConstructor a i o = TxConstructor
     {
-        txCurrentTime          :: POSIXTime,
-        txConstructorLookups   :: MapUTXO,
-        txConstructorErrors    :: [TxBuilderError],
-        txConstructorResult    :: Maybe (ScriptLookups a, TxConstraints i o),
-        txUtxoRequirements     :: UtxoRequirements
+        txCurrentTime        :: POSIXTime,
+        txConstructorLookups :: MapUTXO,
+        txConstructorErrors  :: [TxBuilderError],
+        txConstructorResult  :: Maybe (ScriptLookups a, TxConstraints i o),
+        txUtxoRequirements   :: UtxoRequirements
     }
-    deriving (Show, Generic, FromJSON, ToJSON)
+    deriving (Show, Generic)
 
 type Transaction = TxConstructor Any (RedeemerType Any) (DatumType Any)
 type TransactionBuilder a = State Transaction a

@@ -18,22 +18,25 @@
 
 module PlutusAppsExtra.Scripts.CommonValidators where
 
-import           Ledger.Typed.Scripts           (IsScriptContext (..), Language (..), Versioned (..))
+import           Ledger                         (mkValidatorScript)
+import           Ledger.Typed.Scripts           (IsScriptContext (..), Language (..), Validator, Versioned (..))
 import           Plutus.Script.Utils.V2.Address (mkValidatorAddress)
-import           Plutus.Script.Utils.V2.Scripts (validatorHash)
-import           Plutus.V2.Ledger.Api
+import           Plutus.Script.Utils.V2.Scripts (ValidatorHash, validatorHash)
+import           PlutusCore                     (latestVersion)
+import           PlutusLedgerApi.V3             (Address, ScriptContext)
+import           PlutusPrelude                  (fromRight)
 import           PlutusTx                       (applyCode, compile, liftCode)
-import           PlutusTx.Prelude
+import           PlutusTx.Prelude               (Bool (False), Integer, error, flip, ($), (.))
 
 {-# INLINABLE alwaysFalseValidatorCheck #-}
 alwaysFalseValidatorCheck :: Integer -> () -> () -> ScriptContext -> Bool
 alwaysFalseValidatorCheck _ _ _ _ = False
 
 alwaysFalseValidator :: Integer -> Validator
-alwaysFalseValidator salt = mkValidatorScript $
+alwaysFalseValidator salt = mkValidatorScript $ fromRight (error ()) $
   $$(PlutusTx.compile [|| mkUntypedValidator . alwaysFalseValidatorCheck ||])
     `PlutusTx.applyCode`
-            PlutusTx.liftCode salt
+        PlutusTx.liftCode latestVersion salt
 
 alwaysFalseValidatorV :: Integer -> Versioned Validator
 alwaysFalseValidatorV = flip Versioned PlutusV2 . alwaysFalseValidator

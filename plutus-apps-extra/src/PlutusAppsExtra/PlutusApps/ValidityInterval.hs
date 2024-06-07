@@ -3,26 +3,23 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE MonoLocalBinds     #-}
-{-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE NoImplicitPrelude  #-}
-{-# LANGUAGE OverloadedStrings  #-}
 
 module PlutusAppsExtra.PlutusApps.ValidityInterval
-  ( ValidityInterval(..)
-  , interval
-  , from
-  , lessThan
-  , fromPlutusInterval
-  , toPlutusInterval
-  ) where
+    ( ValidityInterval (..)
+    , interval
+    , from
+    , lessThan
+    , fromPlutusInterval
+    , toPlutusInterval
+    ) where
 
-import Data.Aeson (FromJSON, ToJSON)
-import GHC.Generics (Generic)
-import PlutusTx.Prelude (Bool (False, True), Enum (succ), Functor (fmap), Maybe (Just, Nothing))
-import qualified Prelude as Haskell
-import Plutus.V1.Ledger.Interval(LowerBound (..), Extended (..), UpperBound (..), Interval (..))
+import           Data.Aeson         (FromJSON, ToJSON)
+import           GHC.Generics       (Generic)
+import           PlutusLedgerApi.V3 (Extended (..), Interval (..), LowerBound (..), UpperBound (..))
+import           PlutusTx.Prelude   (Bool (False, True), Enum (succ), Functor (fmap), Maybe (Just, Nothing))
+import qualified Prelude            as Haskell
 
 {- Note [About ValidityInterval]
 

@@ -5,7 +5,6 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoImplicitPrelude     #-}
-{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 
@@ -13,22 +12,21 @@
 
 module PlutusAppsExtra.Utils.Orphans where
 
-import           Ledger                    (PubKeyHash (..), StakePubKeyHash, ValidatorHash (..))
+import           Ledger                    (PubKeyHash (..), ScriptHash (..), StakePubKeyHash)
 import           Ledger.Address            (Address (..), PaymentPubKeyHash (..), StakePubKeyHash (..))
-import           Ledger.Tx                 (TxId (..), TxOutRef (..))
-import           Plutus.V2.Ledger.Api      (Credential (..), StakingCredential (..))
+import qualified PlutusLedgerApi.V1        as PV1
+import           PlutusLedgerApi.V3        (Credential (..), StakingCredential (..))
+import           PlutusTx.Extra.ByteString (ToBuiltinByteString (..))
 import           PlutusTx.Prelude          hiding ((<$>), (<>))
 import           Prelude                   ((<$>), (^))
 import           Test.QuickCheck           (Arbitrary (..))
 
-import           PlutusTx.Extra.ByteString (ToBuiltinByteString (..))
+----------------------------------- Arbitrary --------------------------------------
 
-------------------------------------- Arbitrary --------------------------------------
-
-instance Arbitrary TxOutRef where
+instance Arbitrary PV1.TxOutRef where
     arbitrary = do
         bs <- arbitrary
-        TxOutRef (TxId $ toBytes $ modulo bs (2 ^ (256 :: Integer) - 1)) . max 0 <$> arbitrary
+        PV1.TxOutRef (PV1.TxId $ toBytes $ modulo bs (2 ^ (256 :: Integer) - 1)) . max 0 <$> arbitrary
 
 instance Arbitrary PubKeyHash where
     arbitrary = do
@@ -41,12 +39,12 @@ instance Arbitrary PaymentPubKeyHash where
 instance Arbitrary StakePubKeyHash where
     arbitrary = StakePubKeyHash <$> arbitrary
 
------------------------------------ ToBuiltinByteString -------------------------------
+--------------------------------- ToBuiltinByteString -------------------------------
 
 instance ToBuiltinByteString Credential where
     {-# INLINABLE toBytes #-}
     toBytes (PubKeyCredential (PubKeyHash bs)) = bs
-    toBytes (ScriptCredential (ValidatorHash bs)) = bs
+    toBytes (ScriptCredential (ScriptHash bs)) = bs
 
 instance ToBuiltinByteString Address where
     {-# INLINABLE toBytes #-}

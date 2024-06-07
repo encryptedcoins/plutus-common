@@ -19,19 +19,20 @@ import qualified Data.Text                     as T
 import           Ledger                        (ScriptHash, TxId (..), TxOutRef (..))
 import           Network.HTTP.Client           (HttpException (..), newManager)
 import           Network.HTTP.Client.TLS       (tlsManagerSettings)
-import           Plutus.V1.Ledger.Value        (AssetClass (..), CurrencySymbol, TokenName)
+import           Plutus.Script.Utils.Value     (AssetClass (..))
 import           PlutusAppsExtra.Types.Error   (ConnectionError (..), MaestroError (..))
-import           PlutusAppsExtra.Utils.Maestro (AccountAddressesHoldingAssetsResponse, AssetMintsAndBurnsResponse, Cursor,
-                                                Maestro (..), ScriptByHashResponse,
-                                                TxDetailsResponse (..), TxHistoryResponse (..), TxOutputResponse, TxStateResponse,
-                                                UtxosAtAddressResponse)
+import           PlutusAppsExtra.Utils.Maestro (AccountAddressesHoldingAssetsResponse, AssetMintsAndBurnsResponse, Cursor, Maestro (..),
+                                                ScriptByHashResponse, TxDetailsResponse (..), TxHistoryResponse (..), TxOutputResponse,
+                                                TxStateResponse, UtxosAtAddressResponse)
 import           PlutusAppsExtra.Utils.Network (HasNetworkId (..))
 import           PlutusAppsExtra.Utils.Servant (CBOR)
+import qualified PlutusLedgerApi.V1            as PV1
+import           PlutusLedgerApi.V3            (CurrencySymbol, TokenName)
 import           Servant.API                   (Capture, Get, Header, JSON, QueryParam, ReqBody, (:>))
 import           Servant.API.ContentTypes      (PlainText)
 import           Servant.API.Verbs             (PostAccepted)
-import           Servant.Client                (BaseUrl (BaseUrl), ClientM, Scheme (Http), client, mkClientEnv, runClientM)
 import qualified Servant.Client                as Servant
+import           Servant.Client                (BaseUrl (BaseUrl), ClientM, Scheme (Http), client, mkClientEnv, runClientM)
 
 type GetUtxosAtAddress = ApiPrefix :> Auth :>
     "addresses" :> Capture "Address" Text :> "utxos" :> QueryParam "resolve-datums" Bool :> QueryParam "cursor" Cursor :> Get '[JSON] UtxosAtAddressResponse
@@ -62,15 +63,14 @@ getScriptByHash sh = getFromEndpointMaestroWithToken $ \t ->
     client (Proxy @GetScriptByHash) t (Maestro sh)
 
 type GetTxDetails = ApiPrefix :> Auth :>
-    "transactions" :> Capture "Tx hash" (Maestro TxId) :> Get '[JSON] TxDetailsResponse
+    "transactions" :> Capture "Tx hash" (Maestro PV1.TxId) :> Get '[JSON] TxDetailsResponse
 
-getTxDetails :: MonadMaestro m =>  TxId -> m TxDetailsResponse
+getTxDetails :: MonadMaestro m => PV1.TxId -> m TxDetailsResponse
 getTxDetails txId = getFromEndpointMaestroWithToken $ \t ->
     client (Proxy @GetTxDetails) t (Maestro txId)
 
-
 type GetTxOutput = ApiPrefix :> Auth :>
-    "transactions" :> Capture "Tx hash" (Maestro TxId) :> "outputs" :> Capture "Output index" Integer :> "txo" :>  Get '[JSON] TxOutputResponse
+    "transactions" :> Capture "Tx hash" (Maestro PV1.TxId) :> "outputs" :> Capture "Output index" Integer :> "txo" :>  Get '[JSON] TxOutputResponse
 
 getTxOutput :: MonadMaestro m => TxOutRef -> m TxOutputResponse
 getTxOutput (TxOutRef txId txIdIndex) = getFromEndpointMaestroWithToken $ \t ->
@@ -84,9 +84,9 @@ getTxHistory = getFromEndpointMaestroWithToken $ \t ->
     client (Proxy @GetTxHistory) t
 
 type GetTxState = ApiPrefix :> Auth :>
-    "txmanager" :> Capture "Tx hash" (Maestro TxId) :> "state" :> Get '[JSON] TxStateResponse
+    "txmanager" :> Capture "Tx hash" (Maestro PV1.TxId) :> "state" :> Get '[JSON] TxStateResponse
 
-getTxState :: MonadMaestro m => TxId -> m TxStateResponse
+getTxState :: MonadMaestro m => PV1.TxId -> m TxStateResponse
 getTxState txId = getFromEndpointMaestroWithToken $ \t ->
     client (Proxy @GetTxState) t (Maestro txId)
 

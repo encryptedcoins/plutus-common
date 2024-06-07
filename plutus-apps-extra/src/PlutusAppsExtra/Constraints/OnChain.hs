@@ -9,12 +9,18 @@
 
 module PlutusAppsExtra.Constraints.OnChain where
 
-import           Ledger                    (contains, interval)
-import           Plutus.V2.Ledger.Api
-import qualified Plutus.V2.Ledger.Api      as P
-import           Plutus.V2.Ledger.Contexts (findDatum, findOwnInput, ownCurrencySymbol)
-import           PlutusTx.AssocMap         (lookup)
-import           PlutusTx.Prelude          hiding (Semigroup (..), fromInteger, mempty, toList, unless, (<$>))
+import           Ledger                      (contains, interval)
+import           PlutusLedgerApi.V3          (CurrencySymbol, Datum (getDatum), Extended (Finite), FromData (..), Interval (ivFrom, ivTo),
+                                              LowerBound (LowerBound), Map, OutputDatum (NoOutputDatum, OutputDatum, OutputDatumHash),
+                                              POSIXTime, ScriptContext (scriptContextTxInfo), TokenName, TxInInfo (txInInfoResolved),
+                                              TxInfo (txInfoInputs, txInfoMint, txInfoOutputs, txInfoReferenceInputs, txInfoValidRange),
+                                              TxOut (txOutDatum), UpperBound (UpperBound), Value (getValue))
+import qualified PlutusLedgerApi.V3          as P
+import           PlutusLedgerApi.V3.Contexts (findDatum, findOwnInput, ownCurrencySymbol)
+import           PlutusTx.AssocMap           (lookup)
+import qualified PlutusTx.AssocMap           as PMAP
+import           PlutusTx.Prelude            (Bool (False), Eq ((==)), Functor (fmap), Integer, Maybe (..), error, filter, find, fromMaybe,
+                                              isJust, length, map, maybe, not, null, return, ($), (.))
 
 
 {-# INLINABLE checkDatum #-}
@@ -82,7 +88,7 @@ checkOwnInput ctx f = fromMaybe False $ do
 
 {-# INLINABLE currencyMintedOrBurned #-}
 currencyMintedOrBurned :: TxInfo -> CurrencySymbol -> Bool
-currencyMintedOrBurned info cs = maybe False (not . null) $ lookup cs $ P.getValue $ txInfoMint info
+currencyMintedOrBurned info cs = maybe False (not . null) $ lookup cs $ fmap PMAP.toList $ P.getValue $ txInfoMint info
 
 -- PlutusTx AssocMap is not sorted automatically.
 -- Therefore, the second argument of tokensMinted must be pre-sorted manually (preferably off-chain).

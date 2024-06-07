@@ -1,143 +1,82 @@
-{-# LANGUAGE DataKinds                 #-}
-{-# LANGUAGE DeriveAnyClass            #-}
-{-# LANGUAGE DeriveGeneric             #-}
-{-# LANGUAGE DerivingVia               #-}
-{-# LANGUAGE EmptyCase                 #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE GADTs                     #-}
-{-# LANGUAGE ImportQualifiedPost       #-}
-{-# LANGUAGE LambdaCase                #-}
-{-# LANGUAGE NamedFieldPuns            #-}
-{-# LANGUAGE OverloadedStrings         #-}
-{-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE TemplateHaskell           #-}
-{-# LANGUAGE TupleSections             #-}
-{-# LANGUAGE TypeApplications          #-}
-{-# LANGUAGE TypeFamilies              #-}
-{-# LANGUAGE TypeOperators             #-}
-{-# LANGUAGE UndecidableInstances      #-}
-{-# LANGUAGE ViewPatterns              #-}
-{-# OPTIONS_GHC -Wno-missing-import-lists #-}
-module PlutusAppsExtra.PlutusApps.ScriptLookups(
-    -- * Lookups
-    ScriptLookups(..)
-    , typedValidatorLookups
-    , generalise
-    , unspentOutputs
-    , mintingPolicy
-    , plutusV1MintingPolicy
-    , plutusV2MintingPolicy
-    , otherScript
-    , plutusV1OtherScript
-    , plutusV2OtherScript
-    , otherData
-    , paymentPubKey
-    , paymentPubKeyHash
-    -- * Constraints resolution
-    , SomeLookupsAndConstraints(..)
-    , UnbalancedTx(..)
-    , tx
-    , txInsCollateral
-    , txValidityRange
-    , txOuts
-    , utxoIndex
-    , emptyUnbalancedTx
-    , adjustUnbalancedTx
-    , mkTx
-    , mkTxWithParams
-    , mkSomeTx
-    , MkTxError(..)
-    , _TypeCheckFailed
-    , _ToCardanoError
-    , _TxOutRefNotFound
-    , _TxOutRefWrongType
-    , _TxOutRefNoReferenceScript
-    , _DatumNotFound
-    , _DeclaredInputMismatch
-    , _MintingPolicyNotFound
-    , _ScriptHashNotFound
-    , _TypedValidatorMissing
-    , _DatumWrongHash
-    , _CannotSatisfyAny
-    , _NoMatchingOutputFound
-    , _MultipleMatchingOutputsFound
-    -- * Internals exposed for testing
-    , ValueSpentBalances(..)
-    , provided
-    , required
-    , missingValueSpent
-    , ConstraintProcessingState(..)
-    , unbalancedTx
-    , valueSpentInputs
-    , valueSpentOutputs
-    , paramsL
-    , processConstraintFun
-    , addOwnInput
-    , addOwnOutput
-    , updateUtxoIndex
-    , lookupTxOutRef
-    , lookupMintingPolicy
-    , lookupScript
-    , lookupScriptAsReferenceScript
-    , prepareConstraints
-    , resolveScriptTxOut
-    , resolveScriptTxOutValidator
-    , resolveScriptTxOutDatumAndValue
-    , DatumWithOrigin(..)
-    , datumWitness
-    , checkValueSpent
-    , SortedConstraints(..)
-    , initialState
-    ) where
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE EmptyCase                  #-}
+{-# LANGUAGE ExistentialQuantification  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ImportQualifiedPost        #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE NamedFieldPuns             #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE ViewPatterns               #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
-import Cardano.Api qualified as C
-import Cardano.Api.Shelley qualified as C
-import Cardano.Node.Emulator.Params (PParams, Params (..), networkIdL, pProtocolParams)
-import Cardano.Node.Emulator.TimeSlot (posixTimeRangeToContainedSlotRange, slotRangeToPOSIXTimeRange)
-import Control.Lens
-import Control.Lens.Extras (is)
-import Control.Monad.Except (Except, MonadError (catchError), guard, lift, runExcept, throwError, unless)
-import Control.Monad.Reader (MonadReader (ask), ReaderT (runReaderT), asks)
-import Control.Monad.State (MonadState (get, put), StateT, execStateT, gets)
-import Data.Aeson (FromJSON, ToJSON)
-import Data.Either (partitionEithers)
-import Data.Foldable (traverse_)
-import Data.Functor.Compose (Compose (Compose))
-import Data.List qualified as List
-import Data.Map (Map)
-import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
-import Data.Semigroup (First (First, getFirst))
-import Data.Set (Set)
-import Data.Set qualified as Set
-import GHC.Generics (Generic)
-import Ledger (Datum, Language (PlutusV1, PlutusV2), MintingPolicy, MintingPolicyHash, POSIXTimeRange,
-               Redeemer (Redeemer), Versioned, adjustCardanoTxOut, decoratedTxOutReferenceScript)
-import Ledger.Address (PaymentPubKey (PaymentPubKey), PaymentPubKeyHash (PaymentPubKeyHash))
-import Ledger.Crypto (pubKeyHash)
-import Ledger.Interval ()
-import Ledger.Orphans ()
-import Ledger.Scripts (ScriptHash, getRedeemer, getValidator)
-import Ledger.Tx (DecoratedTxOut, TxOut, TxOutRef)
-import Ledger.Tx qualified as Tx
-import Ledger.Tx.CardanoAPI (CardanoBuildTx (CardanoBuildTx), toCardanoMintWitness, toCardanoPolicyId)
-import Ledger.Tx.CardanoAPI qualified as C
-import PlutusAppsExtra.PlutusApps.TxConstraints
-import PlutusAppsExtra.PlutusApps.ValidityInterval (toPlutusInterval)
-import Ledger.Typed.Scripts (Any, ConnectionError (UnknownRef), TypedValidator (tvValidator, tvValidatorHash),
-                             ValidatorTypes (DatumType, RedeemerType), validatorAddress)
-import Plutus.Script.Utils.Scripts (datumHash, scriptHash)
-import Plutus.Script.Utils.V2.Typed.Scripts qualified as Typed
-import Plutus.Script.Utils.Value qualified as Value
-import Plutus.V1.Ledger.Api (Datum (Datum), DatumHash, StakingCredential, Validator, Value, getMintingPolicy)
-import Plutus.V1.Ledger.Scripts (MintingPolicy (MintingPolicy), MintingPolicyHash (MintingPolicyHash), Script,
-                                 ScriptHash (ScriptHash), Validator (Validator), ValidatorHash (ValidatorHash))
-import PlutusTx (FromData, ToData (toBuiltinData))
-import PlutusTx.Lattice (BoundedMeetSemiLattice (top), JoinSemiLattice ((\/)), MeetSemiLattice ((/\)))
-import PlutusTx.Numeric qualified as N
-import Prettyprinter (Pretty (pretty), colon, hang, viaShow, vsep, (<+>))
+module PlutusAppsExtra.PlutusApps.ScriptLookups where
 
+import qualified Cardano.Api                                 as C
+import qualified Cardano.Api.Shelley                         as C
+import           Cardano.Node.Emulator                       (Params)
+import           Cardano.Node.Emulator.Internal.Node         (Params (..), networkIdL, posixTimeRangeToContainedSlotRange,
+                                                              slotRangeToPOSIXTimeRange)
+import           Cardano.Node.Emulator.Internal.Node.Params  (PParams)
+import           Control.Lens
+import           Control.Lens.Extras                         (is)
+import           Control.Monad                               (guard, unless)
+import           Control.Monad.Except                        (Except, MonadError (catchError), runExcept, throwError)
+import           Control.Monad.Reader                        (MonadReader (ask), ReaderT (runReaderT), asks)
+import           Control.Monad.State                         (MonadState (get, put), StateT, execStateT, gets)
+import           Data.Aeson                                  (FromJSON, ToJSON)
+import           Data.Either                                 (partitionEithers)
+import           Data.Foldable                               (traverse_)
+import           Data.Functor.Compose                        (Compose (Compose))
+import qualified Data.List                                   as List
+import           Data.Map                                    (Map)
+import qualified Data.Map                                    as Map
+import           Data.Maybe                                  (mapMaybe)
+import           Data.Semigroup                              (First (First, getFirst))
+import           Data.Set                                    (Set)
+import qualified Data.Set                                    as Set
+import           GHC.Generics                                (Generic)
+import           Ledger                                      (Datum, Language (PlutusV1, PlutusV2), MintingPolicy (..),
+                                                              MintingPolicyHash (..), POSIXTimeRange, Redeemer (Redeemer), Validator (..),
+                                                              ValidatorHash (..), Versioned, decoratedTxOutReferenceScript)
+import qualified Ledger                                      as L
+import           Ledger.Address                              (PaymentPubKey (PaymentPubKey), PaymentPubKeyHash (PaymentPubKeyHash))
+import           Ledger.Crypto                               (pubKeyHash)
+import           Ledger.Index                                (adjustTxOut)
+import           Ledger.Orphans                              ()
+import           Ledger.Scripts                              (Script, ScriptHash, getRedeemer)
+import           Ledger.Tx                                   (DecoratedTxOut, TxOut, TxOutRef)
+import qualified Ledger.Tx                                   as Tx
+import           Ledger.Tx.CardanoAPI                        (CardanoBuildTx (CardanoBuildTx), toCardanoMintWitness, toCardanoPolicyId)
+import qualified Ledger.Tx.CardanoAPI                        as C
+import           Ledger.Typed.Scripts                        (Any, ConnectionError (UnknownRef),
+                                                              TypedValidator (tvValidator, tvValidatorHash),
+                                                              ValidatorTypes (DatumType, RedeemerType), validatorAddress)
+import           Plutus.Script.Utils.Scripts                 (datumHash, scriptHash)
+import qualified Plutus.Script.Utils.V2.Typed.Scripts        as Typed
+import qualified Plutus.Script.Utils.Value                   as Value
+import           PlutusAppsExtra.PlutusApps.TxConstraints    (ScriptInputConstraint (..), ScriptOutputConstraint (..), TxConstraint (..),
+                                                              TxConstraintFun (..), TxConstraintFuns (..), TxConstraints (..),
+                                                              TxOutDatum (..))
+import           PlutusAppsExtra.PlutusApps.ValidityInterval (toPlutusInterval)
+import           PlutusLedgerApi.V1                          (Datum (Datum), DatumHash, ScriptHash (ScriptHash), StakingCredential, Value)
+import           PlutusTx                                    (FromData, ToData (toBuiltinData))
+import           PlutusTx.Lattice                            (BoundedMeetSemiLattice (top), JoinSemiLattice ((\/)), MeetSemiLattice ((/\)))
+import qualified PlutusTx.Numeric                            as N
+import           Prettyprinter                               (Pretty (pretty), colon, hang, viaShow, vsep, (<+>))
 
 data ScriptLookups a =
     ScriptLookups
@@ -252,7 +191,7 @@ makeLensesFor
     , ("txMintValue", "txMintValue'")
     ] ''C.TxBodyContent
 
-txIns :: Lens' C.CardanoBuildTx [(C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))]
+txIns :: Lens' C.CardanoBuildTx [(C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn C.ConwayEra))]
 txIns = coerced . txIns'
 
 txInsCollateral :: Lens' C.CardanoBuildTx [C.TxIn]
@@ -261,7 +200,7 @@ txInsCollateral = coerced . txInsCollateral' . iso toList fromList
         toList C.TxInsCollateralNone       = []
         toList (C.TxInsCollateral _ txins) = txins
         fromList []    = C.TxInsCollateralNone
-        fromList txins = C.TxInsCollateral C.CollateralInBabbageEra txins
+        fromList txins = C.TxInsCollateral C.AlonzoEraOnwardsConway txins
 
 txExtraKeyWits :: Lens' C.CardanoBuildTx (Set.Set (C.Hash C.PaymentKey))
 txExtraKeyWits = coerced . txExtraKeyWits' . iso toSet fromSet
@@ -269,7 +208,7 @@ txExtraKeyWits = coerced . txExtraKeyWits' . iso toSet fromSet
         toSet C.TxExtraKeyWitnessesNone        = mempty
         toSet (C.TxExtraKeyWitnesses _ txwits) = Set.fromList txwits
         fromSet s | null s    = C.TxExtraKeyWitnessesNone
-                  | otherwise = C.TxExtraKeyWitnesses C.ExtraKeyWitnessesInBabbageEra $ Set.toList s
+                  | otherwise = C.TxExtraKeyWitnesses C.AlonzoEraOnwardsConway $ Set.toList s
 
 txInsReference :: Lens' C.CardanoBuildTx [C.TxIn]
 txInsReference = coerced . txInsReference' . iso toList fromList
@@ -277,36 +216,37 @@ txInsReference = coerced . txInsReference' . iso toList fromList
         toList C.TxInsReferenceNone       = []
         toList (C.TxInsReference _ txins) = txins
         fromList []    = C.TxInsReferenceNone
-        fromList txins = C.TxInsReference C.ReferenceTxInsScriptsInlineDatumsInBabbageEra txins
+        fromList txins = C.TxInsReference C.BabbageEraOnwardsConway txins
 
 txMintValue :: Lens' C.CardanoBuildTx
-                 (C.Value, Map.Map C.PolicyId (C.ScriptWitness C.WitCtxMint C.BabbageEra))
+                 (C.Value, Map.Map C.PolicyId (C.ScriptWitness C.WitCtxMint C.ConwayEra))
 txMintValue = coerced . txMintValue' . iso toMaybe fromMaybe
     where
-        toMaybe :: C.TxMintValue C.BuildTx C.BabbageEra -> (C.Value, Map.Map C.PolicyId (C.ScriptWitness C.WitCtxMint C.BabbageEra))
+        toMaybe :: C.TxMintValue C.BuildTx C.ConwayEra -> (C.Value, Map.Map C.PolicyId (C.ScriptWitness C.WitCtxMint C.ConwayEra))
         toMaybe (C.TxMintValue _ v (C.BuildTxWith msc)) = (v, msc)
         toMaybe _                                       = (mempty, mempty)
-        fromMaybe ::  (C.Value, Map.Map C.PolicyId (C.ScriptWitness C.WitCtxMint C.BabbageEra)) -> C.TxMintValue C.BuildTx C.BabbageEra
-        fromMaybe (c, msc) = C.TxMintValue C.MultiAssetInBabbageEra c (C.BuildTxWith msc)
+        fromMaybe ::  (C.Value, Map.Map C.PolicyId (C.ScriptWitness C.WitCtxMint C.ConwayEra)) -> C.TxMintValue C.BuildTx C.ConwayEra
+        fromMaybe (c, msc) = C.TxMintValue C.MaryEraOnwardsConway c (C.BuildTxWith msc)
 
-txOuts :: Lens' C.CardanoBuildTx [C.TxOut C.CtxTx C.BabbageEra]
+txOuts :: Lens' C.CardanoBuildTx [C.TxOut C.CtxTx C.ConwayEra]
 txOuts = coerced . txOuts'
 
-txValidityRange :: Lens' C.CardanoBuildTx (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUpperBound C.BabbageEra)
-txValidityRange = coerced . txValidityRange'
+txValidityRange :: Lens' C.CardanoBuildTx (C.TxValidityLowerBound C.ConwayEra, C.TxValidityUpperBound C.ConwayEra)
+txValidityRange = coerced . txValidityRange
 
 emptyCardanoBuildTx :: Params -> C.CardanoBuildTx
 emptyCardanoBuildTx p = C.CardanoBuildTx $ C.TxBodyContent
     { C.txIns = mempty
-    , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra mempty
+    , C.txInsCollateral = C.TxInsCollateral C.AlonzoEraOnwardsConway mempty
     , C.txInsReference = C.TxInsReferenceNone
     , C.txOuts = mempty
     , C.txTotalCollateral = C.TxTotalCollateralNone
     , C.txReturnCollateral = C.TxReturnCollateralNone
-    , C.txFee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra mempty
-    , C.txValidityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+    , C.txFee = C.TxFeeExplicit C.ShelleyBasedEraConway mempty
+    , C.txValidityLowerBound = C.TxValidityNoLowerBound
+    , C.txValidityUpperBound = C.defaultTxValidityUpperBound C.ShelleyBasedEraConway
     , C.txMintValue = C.TxMintNone
-    , C.txProtocolParams = C.BuildTxWith $ Just $ pProtocolParams p
+    , C.txProtocolParams = C.BuildTxWith $ Just $ C.LedgerProtocolParameters $ pEmulatorPParams p
     , C.txScriptValidity = C.TxScriptValidityNone
     , C.txExtraKeyWits = C.TxExtraKeyWitnessesNone
     , C.txMetadata = C.TxMetadataNone
@@ -314,6 +254,8 @@ emptyCardanoBuildTx p = C.CardanoBuildTx $ C.TxBodyContent
     , C.txWithdrawals = C.TxWithdrawalsNone
     , C.txCertificates = C.TxCertificatesNone
     , C.txUpdateProposal = C.TxUpdateProposalNone
+    , C.txProposalProcedures = Nothing
+    , C.txVotingProcedures = Nothing
     }
 
 emptyUnbalancedTx :: Params -> UnbalancedTx
@@ -341,7 +283,7 @@ data UnbalancedTx
         -- Simply refers to  'slTxOutputs' of 'ScriptLookups'.
         }
     deriving stock (Eq, Generic, Show)
-    deriving anyclass (FromJSON, ToJSON)
+    -- deriving anyclass (FromJSON, ToJSON)
 
 makeLensesFor
     [ ("unBalancedCardanoBuildTx", "cardanoTx")
@@ -584,7 +526,7 @@ processLookupsAndConstraints lookups TxConstraints{txConstraints, txOwnInputs, t
             traverse_ processConstraintFun txCnsFuns
             checkValueSpent
             updateUtxoIndex
-            lift $ setValidityRange (rangeConstraints sortedConstraints)
+            C.lift $ setValidityRange (rangeConstraints sortedConstraints)
 
 processConstraintFun
     :: TxConstraintFun
@@ -604,17 +546,11 @@ processConstraintFun = \case
         case opts of
             [] -> throwError $ NoMatchingOutputFound vh
             [(ref, Just (validator, datum, value))] -> do
-                mkWitness <- throwLeft ToCardanoError $ C.toCardanoTxInScriptWitnessHeader (getValidator <$> validator)
                 txIn <- throwLeft ToCardanoError $ C.toCardanoTxIn ref
-                let witness
-                        = C.ScriptWitness C.ScriptWitnessForSpending $
-                            mkWitness
-                            (C.toCardanoDatumWitness $ datumWitness datum)
-                            (C.toCardanoScriptData (getRedeemer red))
-                            C.zeroExecutionUnits
-
-                unbalancedTx . tx . txIns <>= [(txIn, C.BuildTxWith witness)]
-
+                let dat = C.toCardanoDatumWitness $ datumWitness datum
+                    sd = C.toCardanoScriptData (getRedeemer red)
+                    witness = C.toCardanoTxInScriptWitnessHeader (getValidator <$> validator) dat sd C.zeroExecutionUnits
+                unbalancedTx . tx . txIns <>= [(txIn, C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending witness)]
                 valueSpentInputs <>= provided value
             _ -> throwError $ MultipleMatchingOutputsFound vh
 
@@ -702,9 +638,8 @@ processConstraint = \case
           Nothing -> do
             mscriptTXO <- resolveScriptTxOutValidator txout
             case mscriptTXO of
-                Just validator ->
-                    throwLeft ToCardanoError $ C.toCardanoTxInScriptWitnessHeader (getValidator <$> validator)
-                _ -> throwError (TxOutRefWrongType txo)
+                Just validator -> pure $ C.toCardanoTxInScriptWitnessHeader (getValidator <$> validator)
+                _              -> throwError (TxOutRefWrongType txo)
         mscriptTXO <- resolveScriptTxOutDatumAndValue txout
         case mscriptTXO of
             Just (datum, value) -> do
@@ -748,7 +683,7 @@ processConstraint = \case
                 refTxOut <- lookupTxOutRef ref
                 case refTxOut ^? decoratedTxOutReferenceScript of
                     Just _ -> do
-                      txIn <- throwLeft ToCardanoError $ C.toCardanoTxIn . Tx.txInputRef . Tx.pubKeyTxInput $ ref
+                      txIn <- throwLeft ToCardanoError $ C.toCardanoTxIn $ ref
                       unbalancedTx . tx . txInsReference <>= [txIn]
                       throwLeft ToCardanoError
                         $ toCardanoMintWitness red (flip Tx.Versioned PlutusV2 <$> mref) Nothing
@@ -786,7 +721,7 @@ processConstraint = \case
         slotConfig <- gets (pSlotConfig . cpsParams)
         unbTx <- use unbalancedTx
         let currentValRange = unbTx ^? tx . txValidityRange
-        let currentTimeRange = maybe top (slotRangeToPOSIXTimeRange slotConfig . C.fromCardanoValidityRange) currentValRange
+        let currentTimeRange = maybe top (slotRangeToPOSIXTimeRange slotConfig . uncurry C.fromCardanoValidityRange) currentValRange
         let newRange = posixTimeRangeToContainedSlotRange slotConfig $ currentTimeRange /\ toPlutusInterval timeRange
         cTxTR <- throwLeft ToCardanoError $ C.toCardanoValidityRange newRange
         unbalancedTx . tx . txValidityRange .= cTxTR
@@ -873,10 +808,10 @@ lookupMintingPolicy (MintingPolicyHash mph) = fmap MintingPolicy <$> lookupScrip
 
 lookupScriptAsReferenceScript
     :: Maybe ScriptHash
-    -> ReaderT (ScriptLookups a) (StateT ConstraintProcessingState (Except MkTxError)) (C.ReferenceScript C.BabbageEra)
+    -> ReaderT (ScriptLookups a) (StateT ConstraintProcessingState (Except MkTxError)) (C.ReferenceScript C.ConwayEra)
 lookupScriptAsReferenceScript msh = do
     mscript <- traverse lookupScript msh
-    throwToCardanoError $ C.toCardanoReferenceScript mscript
+    pure $ C.toCardanoReferenceScript mscript
 
 resolveScriptTxOut
     :: ( MonadReader (ScriptLookups a) m
@@ -928,7 +863,7 @@ throwToCardanoError :: MonadError MkTxError m => Either C.ToCardanoError a -> m 
 throwToCardanoError (Left err) = throwError $ ToCardanoError err
 throwToCardanoError (Right a)  = pure a
 
-toTxOutDatum :: Maybe (TxOutDatum Datum) -> C.TxOutDatum C.CtxTx C.BabbageEra
+toTxOutDatum :: Maybe (TxOutDatum Datum) -> C.TxOutDatum C.CtxTx C.ConwayEra
 toTxOutDatum = \case
     Nothing                   -> C.toCardanoTxOutNoDatum
     Just (TxOutDatumHash d)   -> C.toCardanoTxOutDatumHashFromDatum d
@@ -952,8 +887,8 @@ mkTxWithParams params lookups txc = mkSomeTx params [SomeLookupsAndConstraints l
 
 -- | Each transaction output should contain a minimum amount of Ada (this is a
 -- restriction on the real Cardano network).
-adjustUnbalancedTx :: PParams -> UnbalancedTx -> Either Tx.ToCardanoError ([C.Lovelace], UnbalancedTx)
-adjustUnbalancedTx params = alaf Compose (tx . txOuts . traverse) (fmap (\(l,out) -> (l, Tx.getTxOut out)) . adjustCardanoTxOut params . Tx.TxOut)
+adjustUnbalancedTx :: PParams -> UnbalancedTx -> Either Tx.ToCardanoError ([L.Coin], UnbalancedTx)
+adjustUnbalancedTx params = alaf Compose (tx . txOuts . traverse) (pure . fmap Tx.getTxOut . adjustTxOut params . Tx.TxOut)
 
 updateUtxoIndex
     :: ( MonadReader (ScriptLookups a) m

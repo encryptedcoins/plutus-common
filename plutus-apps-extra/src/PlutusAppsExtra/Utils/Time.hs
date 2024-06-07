@@ -2,17 +2,17 @@
 
 module PlutusAppsExtra.Utils.Time where
 
-import           Cardano.Node.Emulator (SlotConfig, posixTimeToEnclosingSlot, posixTimeToUTCTime, slotToEndPOSIXTime,
-                                        utcTimeToPOSIXTime)
-import           Control.Applicative   (Alternative)
-import           Control.Lens          ((^?))
-import qualified Data.Aeson            as J
-import           Data.Aeson.Lens       (key)
-import           Data.Aeson.Types      (FromJSON (..), Parser)
-import           Data.Foldable         (asum)
-import qualified Data.Text             as T
-import           Data.Time             (UTCTime, defaultTimeLocale, parseTimeM)
-import           Ledger                (Slot)
+import           Cardano.Node.Emulator.Internal.Node (SlotConfig, posixTimeToEnclosingSlot, posixTimeToUTCTime, slotToEndPOSIXTime,
+                                                      utcTimeToPOSIXTime)
+import           Control.Applicative                 (Alternative)
+import           Control.Lens                        ((^?))
+import qualified Data.Aeson                          as J
+import           Data.Aeson.Lens                     (key)
+import           Data.Aeson.Types                    (FromJSON (..), Parser)
+import           Data.Foldable                       (asum)
+import qualified Data.Text                           as T
+import           Data.Time                           (UTCTime, defaultTimeLocale, parseTimeM)
+import           Ledger                              (Slot)
 
 parseSlotOrUtc :: J.Value -> Parser (Either UTCTime Slot)
 parseSlotOrUtc val = case val of

@@ -3,12 +3,13 @@
 
 module PlutusAppsExtra.Utils.ChainIndex where
 
-import           Cardano.Node.Emulator.Params (Params (..))
-import           Control.Monad.Catch          (MonadThrow, throwM)
-import qualified Data.Map                     as Map
-import           Ledger                       (DecoratedTxOut (..), TxOut, TxOutRef (..), adaOnlyValue, toTxOut)
+import           Cardano.Node.Emulator.API           (Params (..))
+import           Control.Monad.Catch                 (MonadThrow, throwM)
+import qualified Data.Map                            as Map
+import           Ledger                              (DecoratedTxOut (..), TxOut, TxOutRef (..), adaOnlyValue, toTxOut)
 
-import           PlutusAppsExtra.Types.Error  (MkTxError (..))
+import           Cardano.Node.Emulator.Internal.Node (Params (..))
+import           PlutusAppsExtra.Types.Error         (MkTxError (..))
 
 type MapUTXO = Map.Map TxOutRef DecoratedTxOut
 

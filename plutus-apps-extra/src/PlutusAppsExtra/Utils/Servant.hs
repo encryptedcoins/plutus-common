@@ -13,15 +13,15 @@ import           Control.Monad.Catch         (Exception (..), MonadCatch, handle
 import           Control.Monad.IO.Class      (MonadIO (..))
 import qualified Data.ByteString             as BS
 import qualified Data.ByteString.Lazy        as LBS
-import           Network.HTTP.Client         (HttpException (..), HttpExceptionContent (..), Request (port),
-                                              defaultManagerSettings, newManager)
+import           Network.HTTP.Client         (HttpException (..), HttpExceptionContent (..), Request (port), defaultManagerSettings,
+                                              newManager)
 import qualified Network.HTTP.Media          as M
 import           Network.HTTP.Types.Status   (Status (statusCode))
 import           PlutusAppsExtra.Types.Error (ConnectionError (..))
 import           Servant.API                 (Accept (..))
 import           Servant.API.ContentTypes    (MimeRender (..))
-import           Servant.Client              (BaseUrl (..), ClientM, Scheme (..), mkClientEnv, runClientM)
 import qualified Servant.Client              as Servant
+import           Servant.Client              (BaseUrl (..), ClientM, Scheme (..), mkClientEnv, runClientM)
 
 type Endpoint a = forall m. MonadIO m => ClientM a -> m a
 
@@ -54,4 +54,4 @@ instance Accept CBOR where
     contentType _ = "application" M.// "cbor"
 
 instance MimeRender CBOR BS.ByteString where
-    mimeRender _ cbor = LBS.fromStrict cbor
+    mimeRender _ = LBS.fromStrict

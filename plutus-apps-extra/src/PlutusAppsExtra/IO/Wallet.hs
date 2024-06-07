@@ -9,8 +9,7 @@
 {-# LANGUAGE TypeFamilies          #-}
 
 module PlutusAppsExtra.IO.Wallet
-    ( getWalletAddr
-    , getWalletKeyHashes
+    ( getWalletKeyHashes
     , genPrvKey
     , genPubKey
     , getWalletValue
@@ -34,13 +33,12 @@ import qualified Data.ByteArray                     as BA
 import qualified Data.ByteString                    as BS
 import qualified Data.List.NonEmpty                 as NonEmpty
 import qualified Data.Map                           as Map
-import           Ledger                             (Address, Passphrase (..), PubKey, PubKeyHash, Signature, StakingCredential, TxId,
-                                                     TxOutRef, decoratedTxOutPlutusValue, generateFromSeed, toPublicKey)
+import           Ledger                             (Address, Passphrase (..), PubKey, PubKeyHash, Signature, StakingCredential, TxOutRef,
+                                                     decoratedTxOutPlutusValue, generateFromSeed, toPublicKey)
 import qualified Ledger                             as Caradano
 import           Ledger.Crypto                      (signTx)
 import qualified Plutus.Script.Utils.Ada            as Ada
 import qualified Plutus.Script.Utils.Ada            as P
-import qualified Plutus.V2.Ledger.Api               as P
 import           PlutusAppsExtra.IO.ChainIndex      (HasChainIndexProvider, getRefsAt, getUtxosAt)
 import           PlutusAppsExtra.IO.Wallet.Internal (HasWallet (..), RestoredWallet (..))
 import qualified PlutusAppsExtra.IO.Wallet.Internal as Internal
@@ -48,6 +46,8 @@ import           PlutusAppsExtra.Types.Error        (WalletError (..))
 import           PlutusAppsExtra.Types.Tx           (UtxoRequirements)
 import           PlutusAppsExtra.Utils.Address      (addressToKeyHashes)
 import           PlutusAppsExtra.Utils.ChainIndex   (MapUTXO)
+import qualified PlutusLedgerApi.V1                 as PV1
+import qualified PlutusLedgerApi.V3                 as P
 import           Prelude                            hiding ((-))
 import           System.Random                      (genByteString, getStdGen)
 
@@ -87,7 +87,7 @@ getWalletRefs = getWalletAddresses <&> NonEmpty.toList >>= concatMapM getRefsAt
 getWalletUtxos :: (HasWallet m, HasChainIndexProvider m) => UtxoRequirements -> m MapUTXO
 getWalletUtxos reqs = getWalletAddresses <&> NonEmpty.toList >>= mapM (getUtxosAt reqs) <&> mconcat
 
-mkSignature :: HasWallet m => TxId -> m Signature
+mkSignature :: HasWallet m => PV1.TxId -> m Signature
 mkSignature txId = do
     RestoredWallet{..} <- getRestoredWallet
     xPrv <- genPrvKey

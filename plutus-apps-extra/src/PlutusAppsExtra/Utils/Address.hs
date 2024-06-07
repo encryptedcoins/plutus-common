@@ -5,28 +5,28 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 
 module PlutusAppsExtra.Utils.Address where
 
-import           Cardano.Api.Shelley          (AsType (..), NetworkId (..), SerialiseAddress (..), ShelleyEra, StakeAddress (..),
-                                               StakeCredential (..), byronAddressInEra, makeStakeAddress, shelleyAddressInEra)
-import           Cardano.Ledger.Alonzo.TxInfo (transKeyHash)
-import qualified Cardano.Ledger.Credential    as Shelley
-import           Data.Either.Extra            (eitherToMaybe)
-import           Data.Text                    (Text)
+import           Cardano.Api.Shelley        (AsType (..), NetworkId (..), SerialiseAddress (..), ShelleyBasedEra (ShelleyBasedEraConway),
+                                             StakeAddress (..), StakeCredential (..), byronAddressInEra, makeStakeAddress,
+                                             shelleyAddressInEra)
+import           Data.Either.Extra          (eitherToMaybe)
+import           Data.Text                  (Text)
 
-import           Cardano.Api                  (serialiseToBech32)
-import           Control.Applicative          ((<|>))
-import           Control.Arrow                ((>>>))
-import           Control.Monad                (MonadPlus (..))
-import           Data.Aeson
-import qualified Data.Aeson                   as J
-import           Ledger                       (PubKeyHash (..), StakingCredential, toPlutusAddress)
-import           Ledger.Address               (Address (..), StakePubKeyHash (..), stakingCredential, toPubKeyHash)
-import           Ledger.Tx.CardanoAPI         (deserialiseFromRawBytes, toCardanoAddressInEra)
-import           Plutus.V1.Ledger.Api         (Credential (..), StakingCredential (..), fromBuiltin)
+import           Cardano.Api                (serialiseToBech32)
+import           Cardano.Ledger.Plutus      (transKeyHash)
+import qualified Cardano.Ledger.Shelley.API as Shelley
+import           Control.Applicative        ((<|>))
+import           Control.Arrow              ((>>>))
+import           Control.Monad              (MonadPlus (..))
+import           Data.Aeson                 (FromJSON (parseJSON))
+import qualified Data.Aeson                 as J
+import           Ledger                     (PubKeyHash (..), StakingCredential, toPlutusAddress)
+import           Ledger.Address             (Address (..), StakePubKeyHash (..), stakingCredential, toPubKeyHash)
+import           Ledger.Tx.CardanoAPI       (deserialiseFromRawBytes, toCardanoAddressInEra)
+import           PlutusLedgerApi.V3         (Credential (..), StakingCredential (..), fromBuiltin)
 
 ---------------------------- Address to keyhashes conversions ----------------------------------
 
@@ -59,7 +59,7 @@ bech32ToKeyHashes txt = do
 bech32ToAddress :: Text -> Maybe Address
 bech32ToAddress txt = toPlutusAddress <$> (shelleyAddr <|> byronAddr)
     where
-        shelleyAddr = shelleyAddressInEra @ShelleyEra <$> deserialiseAddress AsShelleyAddress txt
+        shelleyAddr = shelleyAddressInEra ShelleyBasedEraConway <$> deserialiseAddress AsShelleyAddress txt
         byronAddr = byronAddressInEra <$> deserialiseAddress AsByronAddress txt
 
 bech32ToStakeAddress :: Text -> Maybe StakeAddress

@@ -19,15 +19,14 @@ import           Data.Default                  (Default (def))
 import           Data.Word                     (Word64)
 import           GHC.Base                      (coerce)
 import           GHC.TypeLits                  (AppendSymbol, KnownSymbol)
-import           Ledger                        (Datum, DatumHash, Script, ScriptHash, Slot, TxId, Validator, ValidatorHash,
-                                                Versioned)
+import           Ledger                        (Datum, DatumHash, Script, ScriptHash, Slot, Validator, ValidatorHash, Versioned)
 import           Network.HTTP.Client           (HttpExceptionContent, Request)
-import           Plutus.V2.Ledger.Api          (CurrencySymbol, TokenName)
-import qualified Plutus.V2.Ledger.Api          as P
 import           PlutusAppsExtra.Types.Error   (ConnectionError)
-import           PlutusAppsExtra.Utils.Kupo    (Kupo (..), KupoOrder, KupoResponse (..), Pattern (..), GetHealthResponse)
+import           PlutusAppsExtra.Utils.Kupo    (GetHealthResponse, Kupo (..), KupoOrder, KupoResponse (..), Pattern (..))
 import           PlutusAppsExtra.Utils.Servant (Endpoint, getFromEndpointOnPort, pattern ConnectionErrorOnPort)
-import           Servant.API                   (Capture, Get, Header, Headers, JSON, QueryFlag, QueryParam, (:>), getResponse)
+import qualified PlutusLedgerApi.V1            as PV1
+import           PlutusLedgerApi.V3            (CurrencySymbol, TokenName)
+import           Servant.API                   (Capture, Get, Header, Headers, JSON, QueryFlag, QueryParam, getResponse, (:>))
 import           Servant.Client                (client)
 
 ----------------------------------------------------------- Get Matches (*) -----------------------------------------------------------
@@ -41,7 +40,7 @@ type GetKupoResponse spentOrUnspent createdOrSpentBefore createdOrSpentAfter
     :> QueryParam createdOrSpentAfter  (Kupo Slot)
     :> QueryParam "policy_id"          (Kupo CurrencySymbol)
     :> QueryParam "asset_name"         (Kupo TokenName)
-    :> QueryParam "transaction_id"     (Kupo TxId)
+    :> QueryParam "transaction_id"     (Kupo PV1.TxId)
     :> QueryParam "output_index"       Integer
     :> Get '[JSON] (Headers '[Header "X-Most-Recent-Checkpoint" Word64] [KupoResponse])
 
@@ -64,7 +63,7 @@ data KupoRequest (su :: SpentOrUnspent) (before :: CreatedOrSpent) (after :: Cre
     , reqCreatedOrSpentAfter  :: Maybe Slot
     , reqCurrencySymbol       :: Maybe CurrencySymbol
     , reqTokenName            :: Maybe TokenName
-    , reqTxId                 :: Maybe TxId
+    , reqTxId                 :: Maybe PV1.TxId
     , reqTxIdx                :: Maybe Integer
     } deriving (Show, Eq)
 

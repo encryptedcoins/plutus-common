@@ -36,27 +36,28 @@ module PlutusAppsExtra.Scripts.OneShotCurrency
 
 import           Data.Aeson                           (FromJSON, ToJSON)
 import           GHC.Generics                         (Generic)
-import           Ledger                               (DecoratedTxOut, Language (..), Versioned (..))
+import           Ledger                               (DecoratedTxOut, Language (..), Versioned (..), mkMintingPolicyScript,
+                                                       ownCurrencySymbol, spendsOutput)
 import           Ledger.Typed.Scripts                 (mkUntypedMintingPolicy)
 import           Plutus.Script.Utils.V2.Scripts       (MintingPolicy, scriptCurrencySymbol)
-import           Plutus.V2.Ledger.Api                 (CurrencySymbol, ScriptContext (..), TokenName, TxInfo (..), TxOutRef (..),
-                                                       mkMintingPolicyScript, singleton)
-import           Plutus.V2.Ledger.Contexts            (ownCurrencySymbol, spendsOutput)
+import           PlutusLedgerApi.V1                   (CurrencySymbol, ScriptContext (..), TokenName, TxInfo (..), TxOutRef (..), singleton)
 import qualified PlutusTx
 import qualified PlutusTx.AssocMap                    as AssocMap
 import           PlutusTx.Prelude                     hiding (Monoid (..), Semigroup (..))
 import qualified Prelude                              as Haskell
 
-import qualified Plutus.V2.Ledger.Api                 as P
 import           PlutusAppsExtra.Constraints.OffChain (tokensMintedTx, utxoSpentPublicKeyTx)
 import           PlutusAppsExtra.Types.Tx             (TransactionBuilder)
+import           PlutusCore                           (latestVersion)
+import qualified PlutusLedgerApi.V3                   as P
+import qualified PlutusTx.AssocMap                    as PMAP
 
 ---------------------------------- Types ------------------------------------
 
 data OneShotCurrencyParams = OneShotCurrencyParams
     {
-        curRef         :: TxOutRef,
-        curAmounts     :: AssocMap.Map TokenName Integer
+        curRef     :: TxOutRef,
+        curAmounts :: AssocMap.Map TokenName Integer
     }
     deriving stock (Generic, Haskell.Show, Haskell.Eq)
     deriving anyclass (ToJSON, FromJSON)
@@ -91,11 +92,11 @@ checkPolicy c@(OneShotCurrencyParams (TxOutRef refHash refIdx) _) _ ctx@ScriptCo
 
     in mintOK && txOutputSpent
 
-oneShotCurrencyPolicy :: OneShotCurrencyParams -> MintingPolicy
-oneShotCurrencyPolicy cur = mkMintingPolicyScript $
+oneShotCurrencyPolicy :: OneShotCurrencyParams -> Either Haskell.String MintingPolicy
+oneShotCurrencyPolicy cur = mkMintingPolicyScript <$>
     $$(PlutusTx.compile [|| mkUntypedMintingPolicy . checkPolicy ||])
         `PlutusTx.applyCode`
-            PlutusTx.liftCode cur
+            PlutusTx.liftCode latestVersion cur
 
 -------------------------------- Off-Chain -----------------------------------
 
@@ -104,17 +105,20 @@ mkCurrency ref amts =
     OneShotCurrencyParams
         {
             curRef     = ref,
-            curAmounts = AssocMap.fromList amts
+            curAmounts = PMAP.safeFromList amts
         }
 
-currencySymbol :: OneShotCurrencyParams -> CurrencySymbol
-currencySymbol = scriptCurrencySymbol . oneShotCurrencyPolicy
+currencySymbol :: OneShotCurrencyParams -> Either Haskell.String CurrencySymbol
+currencySymbol cur = scriptCurrencySymbol <$> oneShotCurrencyPolicy cur
 
-currencyValue :: OneShotCurrencyParams -> P.Value
-currencyValue cur = oneShotCurrencyValue (currencySymbol cur) cur
+currencyValue :: OneShotCurrencyParams -> Either Haskell.String P.Value
+currencyValue cur = (`oneShotCurrencyValue` cur) <$> currencySymbol cur
 
 -- Constraints that the OneShotCurrency is minted in the transaction
-oneShotCurrencyMintTx :: OneShotCurrencyParams -> TransactionBuilder (Maybe (TxOutRef, DecoratedTxOut))
+oneShotCurrencyMintTx :: OneShotCurrencyParams -> Either Haskell.String (TransactionBuilder (Maybe (TxOutRef, DecoratedTxOut)))
 oneShotCurrencyMintTx par@(OneShotCurrencyParams ref _) = do
-    tokensMintedTx (flip Versioned PlutusV2 $ oneShotCurrencyPolicy par) () (currencyValue par)
-    utxoSpentPublicKeyTx (\r _ -> r == ref)
+    mp <- oneShotCurrencyPolicy par
+    val <- currencyValue par
+    pure $ do
+        tokensMintedTx (Versioned mp PlutusV3) () val
+        utxoSpentPublicKeyTx (\r _ -> r == ref)

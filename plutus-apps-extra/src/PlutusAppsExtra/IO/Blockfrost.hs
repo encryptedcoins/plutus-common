@@ -25,12 +25,11 @@ import qualified Data.Map                         as Map
 import           Data.Maybe                       (fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set                         as Set
 import           Ledger                           (Address (..), Datum (..), DatumFromQuery (..), DatumHash, DecoratedTxOut (..), Script,
-                                                   ScriptHash, StakePubKeyHash (..), TxId (..), TxOutRef (..), Validator, ValidatorHash,
+                                                   ScriptHash (getScriptHash), StakePubKeyHash (..), TxId (..), TxOutRef (..), Validator, ValidatorHash (..),
                                                    Versioned, decoratedTxOutDatum, decoratedTxOutReferenceScript, decoratedTxOutValidator,
                                                    decoratedTxOutValidatorHash, fromCardanoValue)
 import           Plutus.Script.Utils.Value        (CurrencySymbol, TokenName)
-import           Plutus.V1.Ledger.Api             (Credential (..), ToData (..))
-import qualified Plutus.V1.Ledger.Value           as P
+import           PlutusLedgerApi.V3             (Credential (..), ToData (..))
 import           PlutusAppsExtra.Api.Blockfrost   (MonadBlockfrost (..))
 import qualified PlutusAppsExtra.Api.Blockfrost   as Api
 import           PlutusAppsExtra.Types.Tx         (UtxoRequirement (..), UtxoRequirements)
@@ -44,13 +43,13 @@ import           PlutusAppsExtra.Utils.Datum      (hashDatum)
 import qualified PlutusAppsExtra.Utils.Datum      as Datum
 import           PlutusAppsExtra.Utils.Network    (HasNetworkId (..))
 import           PlutusAppsExtra.Utils.Servant    (handle404Maybe)
-
+import qualified PlutusLedgerApi.V1.Value as P
 ----------------------------------------------------------- Hi-level API -----------------------------------------------------------
 
 getAddressFromStakePubKeyHash :: MonadBlockfrost m => PoolId -> StakePubKeyHash -> m (Maybe Address)
 getAddressFromStakePubKeyHash poolId spkh = runMaybeT $ do
     network <- lift getNetworkId
-    history <- MaybeT $ sequence $ Api.getAccountDelegationHistory . makeStakeAddress network <$> spkhToStakeCredential spkh
+    history <- MaybeT $ mapM (Api.getAccountDelegationHistory . makeStakeAddress network) (spkhToStakeCredential spkh)
     txHash  <- MaybeT $ pure $ adhrTxHash <$> find ((== poolId) . adhrPoolId) history
     MaybeT $ fmap turiAddress . listToMaybe . turInputs <$> Api.getTxUtxo txHash
 
@@ -221,7 +220,8 @@ mkUnevaluatedDecoratedTxOut TxUtxoResponseOutput{..} =
         _decoratedTxOutValidator         = Nothing
     in case addressCredential turoAddress of
         PubKeyCredential _decoratedTxOutPubKeyHash    -> pure PublicKeyDecoratedTxOut{..}
-        ScriptCredential _decoratedTxOutValidatorHash -> do
+        ScriptCredential sh -> do
+            let _decoratedTxOutValidatorHash = ValidatorHash $ getScriptHash sh
             _decoratedTxOutScriptDatum <- _decoratedTxOutPubKeyDatum
             pure ScriptDecoratedTxOut{..}
     where
