@@ -1,18 +1,17 @@
 module PlutusAppsExtra.Test.Utils.Gen where
 
-import           Cardano.Node.Emulator  ()
-import           Control.Monad          (replicateM)
-import qualified Data.ByteString        as BS
-import           Ledger                 (Address (..), PaymentPubKey (..), PubKey (..), PubKeyHash (..), TxId (..), TxOutRef (..),
-                                         pubKeyAddress)
-import qualified Plutus.V1.Ledger.Bytes as LedgerBytes
-import           Plutus.V2.Ledger.Api   (Credential (..), StakingCredential (StakingHash), toBuiltin)
-import           Test.QuickCheck        (Arbitrary (..), choose)
-import           Test.QuickCheck.Gen    (Gen)
+import           Cardano.Node.Emulator ()
+import           Control.Monad         (replicateM)
+import qualified Data.ByteString       as BS
+import           Ledger                (Address (..), PaymentPubKey (..), PubKey (..), PubKeyHash (..), TxOutRef (..), pubKeyAddress)
+import qualified PlutusLedgerApi.V1.Tx as PV1
+import           PlutusLedgerApi.V3    (Credential (..), StakingCredential (..), fromBytes, toBuiltin)
+import           Test.QuickCheck       (Arbitrary (..), choose)
+import           Test.QuickCheck.Gen   (Gen)
 
 genPubKeyAddress :: Gen Address
 genPubKeyAddress = do
-    lb <- LedgerBytes.fromBytes <$> arbitrary
+    lb <- fromBytes <$> arbitrary
     pure $ pubKeyAddress (PaymentPubKey (PubKey lb)) Nothing
 
 genPubKeyAddressWithStakingHash :: Gen Address
@@ -23,7 +22,9 @@ genPubKeyAddressWithStakingHash = do
 
 -- An existing arbitrary instance is rejected by a local node
 genTxOutRef :: Gen TxOutRef
-genTxOutRef = TxOutRef <$> (TxId . toBuiltin . BS.pack <$> replicateM 32 arbitrary) <*> choose (1,40)
+genTxOutRef = TxOutRef
+    <$> (PV1.TxId . toBuiltin . BS.pack <$> replicateM 32 arbitrary)
+    <*> choose (1,40)
 
 genCollateral :: Gen (Maybe TxOutRef)
 genCollateral = arbitrary >>= \b -> if b then pure Nothing else Just <$> genTxOutRef

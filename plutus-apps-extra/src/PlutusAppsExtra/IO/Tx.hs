@@ -18,6 +18,7 @@ module PlutusAppsExtra.IO.Tx where
 import           Cardano.Address.Style.Shelley       (getKey)
 import           Cardano.Api                         (ConwayEra, ShelleyWitnessSigningKey (..), SigningKey (..), TxMetadataInEra)
 import           Cardano.Node.Emulator               (Params)
+import           Control.Monad.Catch                 (MonadCatch)
 import           Control.Monad.IO.Class              (MonadIO (..))
 import           Data.Aeson                          (FromJSON, ToJSON)
 import           Data.Functor                        ((<&>))
@@ -67,9 +68,7 @@ class (HasWallet m, HasChainIndexProvider m) => HasTxProvider m where
     default submitTx :: MonadMaestro m => CardanoTx -> m Ledger.TxId
     submitTx ctx = getTxProvider >>= \case
 
-        Cardano fp _ -> fst <$> do
-            networkId <- getNetworkId
-            sumbitTxToNodeLocal fp networkId ctx
+        Cardano fp _ -> submitTxCardano fp ctx
 
         Maestro{}    -> Maestro.submitTx ctx
 
@@ -78,6 +77,11 @@ class (HasWallet m, HasChainIndexProvider m) => HasTxProvider m where
     awaitTxConfirmed txId = getTxProvider >>= \case
        Cardano{} -> getTxAwaitTxParameters >>= flip Cardano.awaitTxConfirmed txId
        Maestro{} -> Maestro.awaitTxConfirmed txId
+
+submitTxCardano :: (HasNetworkId m, MonadIO m, MonadCatch m) => FilePath -> CardanoTx -> m Ledger.TxId
+submitTxCardano fp ctx = fst <$> do
+    networkId <- getNetworkId
+    sumbitTxToNodeLocal fp networkId ctx
 
 getTxAwaitTxParameters :: HasTxProvider m => m AwaitTxParameters
 getTxAwaitTxParameters = getTxProvider <&> \case

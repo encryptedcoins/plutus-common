@@ -7,7 +7,6 @@ module Tests.Blockfrost where
 import           Cardano.Api                    (AsType (..), Hash, NetworkId (..), NetworkMagic (..), SerialiseAsRawBytes (..),
                                                  StakeAddress (..), StakeKey, deserialiseFromBech32)
 import           Cardano.Api.Shelley            (PoolId, StakeAddress (..), StakeCredential (..))
-import           Cardano.Ledger.Alonzo.TxInfo   (transKeyHash)
 import qualified Cardano.Ledger.Credential      as Cred
 import           Cardano.Ledger.Crypto          (StandardCrypto)
 import           Cardano.Ledger.Keys            (KeyHash (..))
@@ -18,12 +17,13 @@ import           Data.String                    (fromString)
 import           Data.Text                      (Text)
 import           Ledger                         (Address, MintingPolicyHash (..), PubKeyHash (..), StakePubKeyHash (StakePubKeyHash), TxId,
                                                  stakePubKeyHashCredential, stakingCredential)
-import           Plutus.V1.Ledger.Api           (CurrencySymbol (..), fromBuiltin, toBuiltin)
 import           PlutusAppsExtra.Api.Blockfrost (MonadBlockfrost (..))
 import           PlutusAppsExtra.IO.Blockfrost  (getAddressFromStakePubKeyHash, verifyAsset)
 import           PlutusAppsExtra.Utils.Address  (bech32ToAddress, bech32ToStakeAddress)
 import           PlutusAppsExtra.Utils.Network  (HasNetworkId (..))
+import           PlutusLedgerApi.V3             (CurrencySymbol (..), fromBuiltin, toBuiltin)
 import qualified Text.Hex                       as T
+import Cardano.Ledger.Plutus (transKeyHash)
 
 toStake :: Text -> StakeAddress
 toStake = fromJust . bech32ToStakeAddress

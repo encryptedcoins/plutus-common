@@ -44,11 +44,11 @@ awaitTxConfirmed MkAwaitTxParameters{..} txId = go 0
 
             (Nothing, _)
                 -> liftIO (threadDelay checkInterval) >> go (attempt + 1)
-      
-            (Just  r, Header slotOfCurrentBlock) 
+
+            (Just  r, Header slotOfCurrentBlock)
                 -> unless (fromInteger (getSlot $ swhhSlot $ krCreatedAt r) + slotsToWait <= slotOfCurrentBlock)
                 $ liftIO $ threadDelay checkInterval >> go (attempt + 1)
 
             (_      , _) -> error "Header 'X-Most-Recent-Checkpoint' isn't seen in response"
-  
-    slotsToWait = 3 * confirmations * 20 
+
+    slotsToWait = 3 * confirmations * 20

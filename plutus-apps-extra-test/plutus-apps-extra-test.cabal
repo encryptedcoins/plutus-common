@@ -35,12 +35,9 @@ test-suite plutus-apps-extra-test
                         -fplugin-opt PlutusTx.Plugin:defer-errors
                         -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
   Main-Is:              Main.hs
-  Other-Modules:        Tests.ChainIndex
-                        Tests.Blockfrost
-                        Tests.Kupo
+  Other-Modules:        Tests.Blockfrost
                         Tests.OnChain
                         Tests.Scripts
-                        Tests.Wallet
   Build-Depends:
     base                                   -any,
     aeson                                  -any,
@@ -50,7 +47,7 @@ test-suite plutus-apps-extra-test
     cardano-ledger-alonzo                  -any,
     cardano-ledger-core                    -any,
     cardano-node-emulator                  -any,
-    cardano-wallet-core                    -any,
+    -- cardano-wallet-core                    -any,
     containers                             -any,
     data-default                           -any,
     from-sum                               -any,
@@ -58,10 +55,10 @@ test-suite plutus-apps-extra-test
     hex-text                               -any,
     plutus-apps-extra                      -any,
     plutus-apps-extra-test-utils           -any,
-    plutus-contract                        -any,
+    -- plutus-contract                        -any,
     plutus-core                            -any,
-    plutus-chain-index                     -any,
-    plutus-chain-index-core                -any,
+    -- plutus-chain-index                     -any,
+    -- plutus-chain-index-core                -any,
     plutus-tx-plugin                       -any,
     plutus-tx                              -any,
     plutus-tx-extra                        -any,

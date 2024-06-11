@@ -74,90 +74,72 @@ library
     other-modules:
       PlutusAppsExtra.IO.Node
     build-depends:
-      base                          >= 4.9 && < 5,
-      base16-bytestring                      -any,
-      base64                                 -any,
-      aeson                                  -any,
-      blockfrost-client                      -any,
-      bytestring                             -any,
-      cardano-addresses                      -any,
-      cardano-api:{cardano-api, internal},
-      cardano-crypto-class                   -any,
-      cardano-ledger-alonzo                  -any,
-      cardano-ledger-babbage                 -any,
-      cardano-ledger-byron                   -any,
-      cardano-ledger-core                    -any,
-      cardano-ledger-conway                  -any,
-      cardano-ledger-shelley                 -any,
-      cardano-node-emulator                  -any,
-      cborg                                  -any,
-      containers                             -any,
-      cryptonite                             -any,
-      data-default                           -any,
-      deriving-aeson                         -any,
-      directory                              -any,
-      either                                 -any,
-      exceptions                             -any,
-      extra                                  -any,
-      file-embed                             -any,
-      freer-extras                           -any,
-      freer-simple                           -any,
-      from-sum                               -any,
-      flat                                   -any,
-      hex-text                               -any,
-      http-client                            -any,
-      http-client-tls                        -any,
-      http-media                             -any,
-      http-types                             -any,
-      lens                                   -any,
-      lens-aeson                             -any,
-      memory                                 -any,
-      mtl                                    -any,
-      openapi3                               -any,
-      ouroboros-network                      -any,
-      ouroboros-network-protocols            -any,
-      plutus-core                            -any,
-      plutus-ledger                          -any,
-      plutus-ledger-api                      -any,
-      plutus-script-utils                    -any,
-      plutus-tx                              -any,
-      plutus-tx-extra                        -any,
-      plutus-tx-plugin                       -any,
-      purescript-bridge                      -any,
-      random                                 -any,
-      req                                    -any,
-      safe-money                             -any,
-      scientific                             -any,
-      serialise                              -any,
-      servant                                -any,
-      servant-client                         -any,
-      servant-client-core                    -any,
-      stm                                    -any,
-      -- strict-containers                      -any,
-      text                                   -any,
-      -- text-class                             -any,
-      time                                   -any,
-      transformers                           -any,
-      generic-arbitrary                      -any,
-      prettyprinter                          -any,
-      QuickCheck                             -any,
-      uuid                                   -any,
-      vector                                 -any,
-
-
-      aeson                          ,
-      aeson-pretty                   ,
-      base              >= 4.9 && < 5,
-      base16-bytestring              ,
-      bytestring                     ,
-      cardano-api                    ,
-      cardano-binary                 ,
-      containers                     ,
-      serialise                      ,
-      flat                           ,
-      plutus-core             ^>=1.27,
-      plutus-ledger-api       ^>=1.27,
-      plutus-tx               ^>=1.27,
-      plutus-tx-plugin        ^>=1.27,
+      , base16-bytestring
+      , base                          >= 4.9 && < 5
+      , base64
+      , aeson
+      , blockfrost-client
+      , bytestring
+      , cardano-addresses
+      , cardano-api:{cardano-api, internal}
+      , cardano-crypto-class
+      , cardano-ledger-alonzo
+      , cardano-ledger-babbage
+      , cardano-ledger-byron
+      , cardano-ledger-core
+      , cardano-ledger-conway
+      , cardano-ledger-shelley
+      , cardano-node-emulator
+      , cborg
+      , containers
+      , cryptonite
+      , data-default
+      , deriving-aeson
+      , directory
+      , either
+      , exceptions
+      , extra
+      , file-embed
+      , freer-extras
+      , freer-simple
+      , from-sum
+      , flat
+      , hex-text
+      , http-client
+      , http-client-tls
+      , http-media
+      , http-types
+      , lens
+      , lens-aeson
+      , memory
+      , mtl
+      , openapi3
+      , ouroboros-network
+      , ouroboros-network-protocols
+      , plutus-core                   ^>=1.27
+      , plutus-ledger
+      , plutus-ledger-api             ^>=1.27
+      , plutus-script-utils
+      , plutus-tx                     ^>=1.27
+      , plutus-tx-extra
+      , plutus-tx-plugin              ^>=1.27
+      , purescript-bridge
+      , random
+      , req
+      , safe-money
+      , scientific
+      , serialise
+      , servant
+      , servant-client
+      , servant-client-core
+      , stm
+      , text
+      , time
+      , transformers
+      , generic-arbitrary
+      , prettyprinter
+      , QuickCheck
+      , uuid
+      , vector
 
     hs-source-dirs: src

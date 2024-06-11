@@ -22,8 +22,8 @@ packages:
     ~/cardano-src/Projects/963deps/cardano-node-emulator/cardano-node-emulator
     ~/cardano-src/Projects/963deps/cardano-node-emulator/cardano-node-socket-emulator
     ~/cardano-src/Projects/963deps/cardano-node-emulator/freer-extras
-    -- plutus-apps-extra-test-utils
-    -- plutus-apps-extra-test
+    plutus-apps-extra-test-utils
+    plutus-apps-extra-test
 
 source-repository-package
   type: git

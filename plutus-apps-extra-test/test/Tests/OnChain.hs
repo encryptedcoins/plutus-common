@@ -18,15 +18,15 @@
 
 module Tests.OnChain where
 
-import           Ledger.Typed.Scripts                 (IsScriptContext (..))
+import           Ledger.Typed.Scripts                 (IsScriptContext (..), MintingPolicy)
 import           Plutus.Script.Utils.V2.Typed.Scripts (TypedValidator, ValidatorTypes (..), mkTypedValidator)
-import           Plutus.V2.Ledger.Api                 (MintingPolicy, ScriptContext (..), TokenName (..), mkMintingPolicyScript)
 import           PlutusTx                             (compile)
-import           PlutusTx.AssocMap                    (fromList)
 import           PlutusTx.Prelude                     (Bool (..), BuiltinByteString, map, ($))
 
+import           Ledger                               (mkMintingPolicyScript)
 import           PlutusAppsExtra.Constraints.OnChain  (tokensMinted)
-
+import           PlutusLedgerApi.V2                   (ScriptContext (..), TokenName (..))
+import qualified PlutusLedgerApi.V3                   as V3
 
 ------------------------------------- Test Minting Policy --------------------------------------
 
@@ -34,12 +34,12 @@ import           PlutusAppsExtra.Constraints.OnChain  (tokensMinted)
 testTokenName :: BuiltinByteString -> TokenName
 testTokenName = TokenName
 
-testPolicyCheck :: [BuiltinByteString] -> ScriptContext -> Bool
+testPolicyCheck :: [BuiltinByteString] -> V3.ScriptContext -> Bool
 testPolicyCheck bss ctx = cond1
   where
     names = map testTokenName bss
 
-    cond1 = tokensMinted ctx $ fromList $ map (, 1) names
+    cond1 = tokensMinted ctx $ V3.unsafeFromList $ map (, 1) names
 
 testPolicy :: MintingPolicy
 testPolicy = mkMintingPolicyScript $
