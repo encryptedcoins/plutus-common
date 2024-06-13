@@ -50,6 +50,11 @@ unsafeMintingPolicyFromCBOR = fromJust . mintingPolicyFromCBOR
 
 --------------- Parameterized from CBOR ------------------
 
+data ParameterizedScriptFromCborError
+    = CborDecodingError Text
+    | ApplyProgramError ApplyProgramError
+    deriving (Show)
+
 parameterizedScriptFromCBOR :: (ToData par, Coercible SerialisedScript script)
     => Text -> par -> Maybe script
 parameterizedScriptFromCBOR txt par = do
@@ -59,7 +64,12 @@ parameterizedScriptFromCBOR txt par = do
     program <- eitherToMaybe $ programFun `applyProgram` programPar
     pure $ coerce $ serialiseUPLC program
 
-parameterizedValidatorFromCBOR :: forall par. (ToData par) => Text -> par -> Maybe Validator
+unsafeParametrizedScriptFromCBOR :: (ToData par)
+    => Text -> par -> Script
+unsafeParametrizedScriptFromCBOR txt = unsafeFromRight . parameterizedScriptFromCBOR txt
+
+parameterizedValidatorFromCBOR :: forall par. (ToData par)
+    => Text -> par -> Either ParameterizedScriptFromCborError Validator
 parameterizedValidatorFromCBOR = parameterizedScriptFromCBOR
 
 unsafeParameterizedValidatorFromCBOR :: (ToData par) => Text -> par -> Validator

@@ -92,10 +92,10 @@ checkPolicy c@(OneShotCurrencyParams (TxOutRef refHash refIdx) _) _ ctx@ScriptCo
 
     in mintOK && txOutputSpent
 
-oneShotCurrencyPolicy :: OneShotCurrencyParams -> Either Haskell.String MintingPolicy
-oneShotCurrencyPolicy cur = mkMintingPolicyScript <$>
+oneShotCurrencyPolicy :: OneShotCurrencyParams ->  MintingPolicy
+oneShotCurrencyPolicy cur = mkMintingPolicyScript $
     $$(PlutusTx.compile [|| mkUntypedMintingPolicy . checkPolicy ||])
-        `PlutusTx.applyCode`
+        `PlutusTx.unsafeApplyCode`
             PlutusTx.liftCode latestVersion cur
 
 -------------------------------- Off-Chain -----------------------------------
@@ -108,17 +108,14 @@ mkCurrency ref amts =
             curAmounts = PMAP.safeFromList amts
         }
 
-currencySymbol :: OneShotCurrencyParams -> Either Haskell.String CurrencySymbol
-currencySymbol cur = scriptCurrencySymbol <$> oneShotCurrencyPolicy cur
+currencySymbol :: OneShotCurrencyParams -> CurrencySymbol
+currencySymbol = scriptCurrencySymbol . oneShotCurrencyPolicy
 
-currencyValue :: OneShotCurrencyParams -> Either Haskell.String P.Value
-currencyValue cur = (`oneShotCurrencyValue` cur) <$> currencySymbol cur
+currencyValue :: OneShotCurrencyParams -> P.Value
+currencyValue cur = (`oneShotCurrencyValue` cur) $ currencySymbol cur
 
 -- Constraints that the OneShotCurrency is minted in the transaction
-oneShotCurrencyMintTx :: OneShotCurrencyParams -> Either Haskell.String (TransactionBuilder (Maybe (TxOutRef, DecoratedTxOut)))
+oneShotCurrencyMintTx :: OneShotCurrencyParams -> TransactionBuilder (Maybe (TxOutRef, DecoratedTxOut))
 oneShotCurrencyMintTx par@(OneShotCurrencyParams ref _) = do
-    mp <- oneShotCurrencyPolicy par
-    val <- currencyValue par
-    pure $ do
-        tokensMintedTx (Versioned mp PlutusV3) () val
-        utxoSpentPublicKeyTx (\r _ -> r == ref)
+    tokensMintedTx (Versioned (oneShotCurrencyPolicy par) PlutusV3) () ( currencyValue par)
+    utxoSpentPublicKeyTx (\r _ -> r == ref)

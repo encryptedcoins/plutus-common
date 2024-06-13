@@ -24,18 +24,17 @@ import           Plutus.Script.Utils.V2.Address (mkValidatorAddress)
 import           Plutus.Script.Utils.V2.Scripts (ValidatorHash, validatorHash)
 import           PlutusCore                     (latestVersion)
 import           PlutusLedgerApi.V3             (Address, ScriptContext)
-import           PlutusPrelude                  (fromRight)
-import           PlutusTx                       (applyCode, compile, liftCode)
-import           PlutusTx.Prelude               (Bool (False), Integer, error, flip, ($), (.))
+import           PlutusTx                       (compile, liftCode, unsafeApplyCode)
+import           PlutusTx.Prelude               (Bool (False), Integer, flip, ($), (.))
 
 {-# INLINABLE alwaysFalseValidatorCheck #-}
 alwaysFalseValidatorCheck :: Integer -> () -> () -> ScriptContext -> Bool
 alwaysFalseValidatorCheck _ _ _ _ = False
 
 alwaysFalseValidator :: Integer -> Validator
-alwaysFalseValidator salt = mkValidatorScript $ fromRight (error ()) $
+alwaysFalseValidator salt = mkValidatorScript $
   $$(PlutusTx.compile [|| mkUntypedValidator . alwaysFalseValidatorCheck ||])
-    `PlutusTx.applyCode`
+    `PlutusTx.unsafeApplyCode`
         PlutusTx.liftCode latestVersion salt
 
 alwaysFalseValidatorV :: Integer -> Versioned Validator
