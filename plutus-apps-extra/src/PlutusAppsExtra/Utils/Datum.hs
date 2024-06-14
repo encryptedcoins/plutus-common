@@ -5,34 +5,31 @@
 
 module PlutusAppsExtra.Utils.Datum where
 
-import qualified Cardano.Api           as C
-import           Cardano.Api.Shelley   (TxOutDatum, fromAlonzoData)
-import           Cardano.Ledger.Conway (Conway)
-import           Cardano.Ledger.Plutus (Data (..))
-import           Data.Coerce           (coerce)
-import           Data.Text             (Text)
-import           Ledger                (DatumFromQuery (..), DatumHash (..), datumHash)
-import           PlutusLedgerApi.V3    (BuiltinByteString, Datum (..), OutputDatum (..), fromBuiltin, toData)
-import           PlutusTx.Builtins     (serialiseData)
-import           PlutusTx.IsData.Class (ToData (toBuiltinData))
-import           PlutusTx.Prelude      (Bool (False), Eq ((==)), blake2b_224, ($), (.))
-import qualified Text.Hex              as T
+import           Data.Text                                (Text)
+import           Ledger                                   (Datum (..), DatumFromQuery (..), DatumHash (..), datumHash)
+import           PlutusAppsExtra.PlutusApps.TxConstraints (TxOutDatum (..))
+import           PlutusLedgerApi.V3                       (BuiltinByteString, OutputDatum (..), fromBuiltin)
+import           PlutusPrelude                            (coerce)
+import           PlutusTx.Builtins                        (serialiseData)
+import           PlutusTx.IsData.Class                    (ToData (toBuiltinData))
+import           PlutusTx.Prelude                         (Bool (False), Eq ((==)), blake2b_224, ($), (.))
+import qualified Text.Hex                                 as T
 
-toDatumHash :: ToData datum => datum -> TxOutDatum C.CtxTx C.ConwayEra
-toDatumHash = C.TxOutDatumHash C.AlonzoEraOnwardsConway . C.hashScriptDataBytes . fromAlonzoData . Data @Conway . toData
+toDatumHash :: ToData datum => datum -> TxOutDatum Datum
+toDatumHash = TxOutDatumHash . Datum . toBuiltinData
 
-toInlineDatum :: ToData datum => datum -> TxOutDatum C.CtxTx C.ConwayEra
-toInlineDatum = C.TxOutDatumInline C.BabbageEraOnwardsConway . fromAlonzoData . Data @Conway . toData
+toInlineDatum :: ToData datum => datum -> TxOutDatum Datum
+toInlineDatum = TxOutDatumInline . Datum . toBuiltinData
 
 {-# INLINABLE isInlineUnit #-}
 isInlineUnit :: OutputDatum -> Bool
 isInlineUnit (OutputDatum (Datum d)) = d == toBuiltinData ()
 isInlineUnit _                       = False
 
-hashedUnit :: TxOutDatum C.CtxTx C.ConwayEra
+hashedUnit :: TxOutDatum Datum
 hashedUnit = $([|toDatumHash ()|])
 
-inlinedUnit :: TxOutDatum C.CtxTx C.ConwayEra
+inlinedUnit :: TxOutDatum Datum
 inlinedUnit = $([|toInlineDatum ()|])
 
 inlinedUnitInTxOut :: (DatumHash, DatumFromQuery)
