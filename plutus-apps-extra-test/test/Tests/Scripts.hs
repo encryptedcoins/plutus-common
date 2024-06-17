@@ -26,7 +26,7 @@ import           Prelude                              hiding (readFile)
 import           Cardano.Node.Emulator                (Params (..))
 import           Ledger                               (ScriptContext (..), ScriptPurpose (..), TxInfo (..), TxOutRef (..), always)
 import           PlutusAppsExtra.Constraints.OnChain  (tokensMinted)
-import           PlutusAppsExtra.Test.Utils           (getProtocolParams, testValidator)
+import           PlutusAppsExtra.Test.Utils           (emptyInfo, getProtocolParams, testValidator)
 import           PlutusAppsExtra.Utils.Scripts        (unsafeParameterizedValidatorFromCBOR, unsafeValidatorFromCBOR)
 import           PlutusLedgerApi.V1                   (TxId (..))
 
@@ -37,18 +37,12 @@ validatorUPLC1 = "5819010000322223253330053370e002902a0a4c2c6eb40095cd01"
 validator1 :: Validator
 validator1 = unsafeValidatorFromCBOR validatorUPLC1
 
--- >>> validator1
--- Validator { <script> }
-
 -- Redeemer is equal to the script parameter (Integer)
 validatorUPLC2 :: Text
 validatorUPLC2 = "581d010000322322223253330073370e00200a2930b1bad002375a002ae681"
 
 validator2 :: Integer -> Validator
 validator2 = unsafeParameterizedValidatorFromCBOR validatorUPLC2
-
--- >>> validator2 42
--- Validator { <script> }
 
 ------------------------------------------------------------------------------------------------------
 
@@ -58,22 +52,8 @@ runScriptTest path = do
       ctx = ScriptContext emptyInfo (Spending $ TxOutRef "" 0)
   params <- getProtocolParams path networkId
 
-  -- testValidator params validator1 () (42 :: Integer) ctx
+  testValidator params validator1 () (42 :: Integer) ctx
 
   testValidator params (validator2 (42 :: Integer)) () (42 :: Integer) ctx
 
   print "Success!"
-
-emptyInfo :: TxInfo
-emptyInfo = TxInfo {
-    txInfoInputs = [],
-    txInfoOutputs = [],
-    txInfoFee = zero,
-    txInfoMint = zero,
-    txInfoDCert = [],
-    txInfoWdrl = mempty,
-    txInfoValidRange = always,
-    txInfoSignatories = [],
-    txInfoData = mempty,
-    txInfoId = TxId emptyByteString
-}

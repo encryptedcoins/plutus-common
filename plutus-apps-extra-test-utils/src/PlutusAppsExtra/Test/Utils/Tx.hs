@@ -12,8 +12,8 @@ import           Data.Coerce                          (coerce)
 import           Data.Either                          (isRight)
 import qualified Data.Map                             as Map
 import           Data.Maybe                           (fromJust, isNothing, listToMaybe, mapMaybe)
-import           Ledger                               (Address (..), CardanoTx (..), DecoratedTxOut (..), ScriptHash (..), TxOutRef,
-                                                       ValidatorHash (..), adaValueOf, toCardanoValue)
+import           Ledger                               (Address (..), CardanoTx (..), DecoratedTxOut (..), ScriptHash (..), TxInfo (..),
+                                                       TxOutRef, ValidatorHash (..), adaValueOf, always, toCardanoValue)
 import           PlutusAppsExtra.Constraints.Balance  (balanceExternalTx)
 import           PlutusAppsExtra.Constraints.OffChain (useAsCollateralTx')
 import           PlutusAppsExtra.IO.Time              (currentTime)
@@ -22,8 +22,10 @@ import           PlutusAppsExtra.Types.Error          (BalanceExternalTxError)
 import           PlutusAppsExtra.Types.Tx             (TransactionBuilder, TxConstructor (..), buildTxConstraints, mkTxConstructor)
 import           PlutusAppsExtra.Utils.ChainIndex     (MapUTXO)
 import           PlutusAppsExtra.Utils.Datum          (inlinedUnitInTxOut)
-import           PlutusLedgerApi.V1                   (Credential (..))
+import           PlutusLedgerApi.V1                   (Credential (..), TxId (..))
 import           PlutusLedgerApi.V3                   (Value)
+import           PlutusTx.Builtins                    (emptyByteString)
+import           PlutusTx.Numeric                     (AdditiveMonoid (..))
 import           Test.Hspec                           (Expectation, expectationFailure, shouldSatisfy)
 import           Test.QuickCheck                      (generate)
 
@@ -67,3 +69,17 @@ withValueUtxo val addr = do
             (Address (ScriptCredential sh)  mbSc) -> ScriptDecoratedTxOut (coerce sh) mbSc val' inlinedUnitInTxOut Nothing Nothing
     ref <- liftIO $ generate genTxOutRef
     modify (<> Map.fromList [(ref, tokensOut)])
+
+emptyInfo :: TxInfo
+emptyInfo = TxInfo {
+    txInfoInputs = [],
+    txInfoOutputs = [],
+    txInfoFee = zero,
+    txInfoMint = zero,
+    txInfoDCert = [],
+    txInfoWdrl = mempty,
+    txInfoValidRange = always,
+    txInfoSignatories = [],
+    txInfoData = mempty,
+    txInfoId = TxId emptyByteString
+}
