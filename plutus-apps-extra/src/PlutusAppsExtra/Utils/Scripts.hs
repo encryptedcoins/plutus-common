@@ -5,18 +5,21 @@
 
 module PlutusAppsExtra.Utils.Scripts where
 
-import           Codec.Serialise       (deserialise, serialise)
-import           Control.FromSum       (eitherToMaybe)
-import qualified Data.ByteString.Lazy  as LBS
-import qualified Data.ByteString.Short as SBS
-import           Data.Coerce           (Coercible, coerce)
-import           Data.Maybe            (fromJust)
-import           Ledger                (MintingPolicy (..), Script (..), Validator (..))
-import           PlutusCore            (DefaultFun, DefaultUni, latestVersion)
-import           PlutusCore.MkPlc      (mkConstant)
-import           PlutusLedgerApi.V3    (SerialisedScript, ToData, serialiseUPLC, toData, uncheckedDeserialiseUPLC)
-import           Text.Hex              (Text, decodeHex, encodeHex)
-import           UntypedPlutusCore     (DeBruijn, Program (..), applyProgram)
+import           Cardano.Address.Style.Shelley (unsafeFromRight)
+import           Codec.Serialise               (deserialise, serialise)
+import           Control.FromSum               (maybeToEither)
+import           Data.Bifunctor                (Bifunctor (..))
+import qualified Data.ByteString.Lazy          as LBS
+import qualified Data.ByteString.Short         as SBS
+import           Data.Coerce                   (Coercible, coerce)
+import           Data.Maybe                    (fromJust)
+import           Ledger                        (MintingPolicy (..), Script (..), Validator (..))
+import           PlutusCore                    (DefaultFun, DefaultUni, latestVersion)
+import           PlutusCore.Error              (ApplyProgramError)
+import           PlutusCore.MkPlc              (mkConstant)
+import           PlutusLedgerApi.V3            (SerialisedScript, ToData, serialiseUPLC, toData, uncheckedDeserialiseUPLC)
+import           Text.Hex                      (Text, decodeHex, encodeHex)
+import           UntypedPlutusCore             (DeBruijn, Program (..), applyProgram)
 
 type UPLCProgram = Program DeBruijn DefaultUni DefaultFun ()
 
@@ -56,12 +59,12 @@ data ParameterizedScriptFromCborError
     deriving (Show)
 
 parameterizedScriptFromCBOR :: (ToData par, Coercible SerialisedScript script)
-    => Text -> par -> Maybe script
+    => Text -> par -> Either ParameterizedScriptFromCborError script
 parameterizedScriptFromCBOR txt par = do
-    bs <- decodeHex txt
+    bs <- maybeToEither (CborDecodingError txt) $ decodeHex txt
     let programFun = uncheckedDeserialiseUPLC $ SBS.toShort bs
         programPar = Program () latestVersion $ mkConstant () (toData par)
-    program <- eitherToMaybe $ programFun `applyProgram` programPar
+    program <- first ApplyProgramError $ programFun `applyProgram` programPar
     pure $ coerce $ serialiseUPLC program
 
 unsafeParametrizedScriptFromCBOR :: (ToData par)
@@ -73,10 +76,10 @@ parameterizedValidatorFromCBOR :: forall par. (ToData par)
 parameterizedValidatorFromCBOR = parameterizedScriptFromCBOR
 
 unsafeParameterizedValidatorFromCBOR :: (ToData par) => Text -> par -> Validator
-unsafeParameterizedValidatorFromCBOR txt = fromJust . parameterizedValidatorFromCBOR txt
+unsafeParameterizedValidatorFromCBOR txt = unsafeFromRight . parameterizedValidatorFromCBOR txt
 
-parameterizedMintingPolicyFromCBOR :: (ToData par) => Text -> par -> Maybe MintingPolicy
+parameterizedMintingPolicyFromCBOR :: (ToData par) => Text -> par -> Either ParameterizedScriptFromCborError MintingPolicy
 parameterizedMintingPolicyFromCBOR = parameterizedScriptFromCBOR
 
 unsafeParameterizedMintingPolicyFromCBOR :: (ToData a) => Text -> a -> MintingPolicy
-unsafeParameterizedMintingPolicyFromCBOR txt par = fromJust $ parameterizedMintingPolicyFromCBOR txt par
+unsafeParameterizedMintingPolicyFromCBOR txt par = unsafeFromRight $ parameterizedMintingPolicyFromCBOR txt par
