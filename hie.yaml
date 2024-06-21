@@ -1,6 +1,7 @@
 cradle:
   cabal:
 
+    # Plutus-apps-extra
     - path: "plutus-apps-extra/src"
       component: "plutus-apps-extra:lib:plutus-apps-extra"
 
@@ -12,3 +13,14 @@ cradle:
 
     - path: "plutus-apps-extra-test/test"
       component: "plutus-apps-extra-test:test:plutus-apps-extra-test"
+
+    # Plutus-tx-extra
+    - path: "plutus-tx-extra/src"
+      component: ""plutus-tx-extra:lib:"plutus-tx-extra"
+
+    # Csl-types
+    - path: "csl-types/src"
+      component: "csl-types:lib:csl-types"
+
+    - path: "csl-types/test"
+      component: "csl-types:test:csl-types-test"

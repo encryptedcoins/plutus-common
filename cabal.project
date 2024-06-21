@@ -16,6 +16,7 @@ index-state:
 packages:
     plutus-apps-extra
     plutus-tx-extra
+    csl-types
     ~/cardano-src/Projects/963deps/quickcheck-contractmodel/quickcheck-contractmodel
     ~/cardano-src/Projects/963deps/quickcheck-contractmodel/quickcheck-threatmodel
     ~/cardano-src/Projects/963deps/cardano-node-emulator/plutus-ledger
