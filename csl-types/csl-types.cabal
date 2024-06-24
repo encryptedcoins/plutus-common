@@ -90,8 +90,8 @@ test-suite csl-types-test
     , csl-types
     , generic-arbitrary
     , hspec
+    , plutus-apps-extra-test-utils
     , plutus-tx-plugin
-    -- , plutus-pab
     , text
     , QuickCheck
   if flag(frontend)

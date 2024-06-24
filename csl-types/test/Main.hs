@@ -22,6 +22,7 @@ import           Ledger                            (policyId, Versioned (..), La
                                                     Value)
 import           Ledger.Value.CardanoAPI           (fromCardanoValue, toCardanoValue)
 import           PlutusAppsExtra.Utils.Address     (addressToBech32)
+import           PlutusAppsExtra.Test.Utils
 import           PlutusLedgerApi.V1                (Credential (..))
 import           PlutusLedgerApi.V2                (getValue)
 import qualified PlutusLedgerApi.V2                as P
@@ -106,54 +107,3 @@ newtype NetworkId' = NetworkId' NetworkId
 
 instance Arbitrary NetworkId' where
     arbitrary = fmap NetworkId' $ oneof $ map pure [Mainnet, Testnet $ NetworkMagic 1, Testnet $ NetworkMagic 2]
-
--- instance Arbitrary Aeson.Value where
---     arbitrary = oneof [Aeson.String <$> arbitrary, Aeson.Number <$> arbitrary]
-
-instance Arbitrary C.Value where
-    arbitrary = C.valueFromList <$> arbitrary
-
-instance Arbitrary C.AssetId where
-    arbitrary = genericArbitrary
-    shrink = genericShrink
-
-instance Arbitrary C.AssetName where
-    arbitrary = C.AssetName <$> arbitrary
-
-instance Arbitrary C.Quantity where
-    arbitrary = genericArbitrary
-    shrink = genericShrink
-
-instance Arbitrary C.PolicyId where
-    arbitrary = pure $ policyId (Versioned acceptingMintingPolicy PlutusV1)
-
-instance Arbitrary StakingCredential where
-    arbitrary = genericArbitrary
-    shrink = genericShrink
-
-instance Arbitrary Credential where
-    arbitrary = genericArbitrary
-    shrink = genericShrink
-
-instance Arbitrary PubKeyHash where
-    arbitrary = genericArbitrary
-    shrink = genericShrink
-
-instance Arbitrary P.ScriptHash where
-    arbitrary = genericArbitrary
-    shrink = genericShrink
-
-instance Arbitrary TxOutRef where
-    arbitrary = genericArbitrary
-    shrink = genericShrink
-
-instance Arbitrary P.TxId where
-    arbitrary = genericArbitrary
-    shrink = genericShrink
-
-instance Arbitrary P.BuiltinByteString where
-    arbitrary = P.toBuiltin <$> (arbitrary :: Gen ByteString)
-
--- | A minting policy that always succeeds.
-acceptingMintingPolicy :: Ledger.MintingPolicy
-acceptingMintingPolicy = Ledger.mkMintingPolicyScript $$(PlutusTx.compile [|| (\_ _ -> ()) ||])
