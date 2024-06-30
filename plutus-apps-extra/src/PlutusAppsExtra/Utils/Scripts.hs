@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -14,7 +15,8 @@ import qualified Data.ByteString.Short         as SBS
 import           Data.Coerce                   (Coercible, coerce)
 import           Data.Maybe                    (fromJust)
 import           Ledger                        (MintingPolicy (..), Script (..), Validator (..))
-import           PlutusCore                    (DefaultFun, DefaultUni, latestVersion)
+import           PlutusCore                    (DefaultFun, DefaultUni)
+import qualified PlutusCore                    as Plutus
 import           PlutusCore.Error              (ApplyProgramError)
 import           PlutusCore.MkPlc              (mkConstant)
 import           PlutusLedgerApi.V3            (SerialisedScript, ToData, serialiseUPLC, toData, uncheckedDeserialiseUPLC)
@@ -59,27 +61,27 @@ data ParameterizedScriptFromCborError
     deriving (Show)
 
 parameterizedScriptFromCBOR :: (ToData par, Coercible SerialisedScript script)
-    => Text -> par -> Either ParameterizedScriptFromCborError script
-parameterizedScriptFromCBOR txt par = do
+    => Plutus.Version -> Text -> par -> Either ParameterizedScriptFromCborError script
+parameterizedScriptFromCBOR pv txt par = do
     bs <- maybeToEither (CborDecodingError txt) $ decodeHex txt
     let programFun = uncheckedDeserialiseUPLC $ SBS.toShort bs
-        programPar = Program () latestVersion $ mkConstant () (toData par)
+        programPar = Program () pv $ mkConstant () (toData par)
     program <- first ApplyProgramError $ programFun `applyProgram` programPar
     pure $ coerce $ serialiseUPLC program
 
 unsafeParametrizedScriptFromCBOR :: (ToData par)
-    => Text -> par -> Script
-unsafeParametrizedScriptFromCBOR txt = unsafeFromRight . parameterizedScriptFromCBOR txt
+    => Plutus.Version -> Text -> par -> Script
+unsafeParametrizedScriptFromCBOR pv txt = unsafeFromRight . parameterizedScriptFromCBOR pv txt
 
 parameterizedValidatorFromCBOR :: forall par. (ToData par)
-    => Text -> par -> Either ParameterizedScriptFromCborError Validator
+    => Plutus.Version -> Text -> par -> Either ParameterizedScriptFromCborError Validator
 parameterizedValidatorFromCBOR = parameterizedScriptFromCBOR
 
-unsafeParameterizedValidatorFromCBOR :: (ToData par) => Text -> par -> Validator
-unsafeParameterizedValidatorFromCBOR txt = unsafeFromRight . parameterizedValidatorFromCBOR txt
+unsafeParameterizedValidatorFromCBOR :: (ToData par) => Plutus.Version -> Text -> par -> Validator
+unsafeParameterizedValidatorFromCBOR pv txt = unsafeFromRight . parameterizedValidatorFromCBOR pv txt
 
-parameterizedMintingPolicyFromCBOR :: (ToData par) => Text -> par -> Either ParameterizedScriptFromCborError MintingPolicy
+parameterizedMintingPolicyFromCBOR :: (ToData par) => Plutus.Version -> Text -> par -> Either ParameterizedScriptFromCborError MintingPolicy
 parameterizedMintingPolicyFromCBOR = parameterizedScriptFromCBOR
 
-unsafeParameterizedMintingPolicyFromCBOR :: (ToData a) => Text -> a -> MintingPolicy
-unsafeParameterizedMintingPolicyFromCBOR txt par = unsafeFromRight $ parameterizedMintingPolicyFromCBOR txt par
+unsafeParameterizedMintingPolicyFromCBOR :: (ToData a) => Plutus.Version -> Text -> a -> MintingPolicy
+unsafeParameterizedMintingPolicyFromCBOR pv txt par = unsafeFromRight $ parameterizedMintingPolicyFromCBOR pv txt par
