@@ -54,6 +54,8 @@ library
       PlutusAppsExtra.PlutusApps.TxConstraints
       PlutusAppsExtra.PlutusApps.ValidityInterval
       PlutusAppsExtra.Scripts.CommonValidators
+      PlutusAppsExtra.Scripts.Legacy.CommonValidators
+      PlutusAppsExtra.Scripts.Legacy.OneShotCurrency
       PlutusAppsExtra.Scripts.OneShotCurrency
       PlutusAppsExtra.Types.Error
       PlutusAppsExtra.Types.Tx
@@ -116,7 +118,7 @@ library
       , openapi3
       , ouroboros-network
       , ouroboros-network-protocols
-      , plutus-core                   ^>=1.27
+      , plutus-core:{plutus-core, plutus-ir} ^>=1.27
       , plutus-ledger
       , plutus-ledger-api             ^>=1.27
       , plutus-script-utils
@@ -133,6 +135,7 @@ library
       , servant-client
       , servant-client-core
       , stm
+      , template-haskell
       , text
       , time
       , transformers

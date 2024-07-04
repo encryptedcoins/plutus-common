@@ -12,7 +12,7 @@ import           Data.Coerce                          (coerce)
 import           Data.Either                          (isRight)
 import qualified Data.Map                             as Map
 import           Data.Maybe                           (fromJust, isNothing, listToMaybe, mapMaybe)
-import           Ledger                               (Address (..), CardanoTx (..), DecoratedTxOut (..), ScriptHash (..), TxInfo (..),
+import           Ledger                               (Address (..), CardanoTx (..), DecoratedTxOut (..), ScriptHash (..),
                                                        TxOutRef, ValidatorHash (..), adaValueOf, always, toCardanoValue)
 import           PlutusAppsExtra.Constraints.Balance  (balanceExternalTx)
 import           PlutusAppsExtra.Constraints.OffChain (useAsCollateralTx')
@@ -24,6 +24,10 @@ import           PlutusAppsExtra.Utils.ChainIndex     (MapUTXO)
 import           PlutusAppsExtra.Utils.Datum          (inlinedUnitInTxOut)
 import           PlutusLedgerApi.V1                   (Credential (..), TxId (..))
 import           PlutusLedgerApi.V3                   (Value)
+import qualified PlutusLedgerApi.V1                   as PV1
+import qualified PlutusLedgerApi.V2                   as PV2
+import qualified PlutusLedgerApi.V3                   as PV3
+import qualified PlutusTx.AssocMap                    as AMap
 import           PlutusTx.Builtins                    (emptyByteString)
 import           PlutusTx.Numeric                     (AdditiveMonoid (..))
 import           Test.Hspec                           (Expectation, expectationFailure, shouldSatisfy)
@@ -70,16 +74,52 @@ withValueUtxo val addr = do
     ref <- liftIO $ generate genTxOutRef
     modify (<> Map.fromList [(ref, tokensOut)])
 
-emptyInfo :: TxInfo
-emptyInfo = TxInfo {
-    txInfoInputs = [],
-    txInfoOutputs = [],
-    txInfoFee = zero,
-    txInfoMint = zero,
-    txInfoDCert = [],
-    txInfoWdrl = mempty,
-    txInfoValidRange = always,
-    txInfoSignatories = [],
-    txInfoData = mempty,
-    txInfoId = TxId emptyByteString
-}
+emptyTxInfoPV3 :: PV3.TxInfo
+emptyTxInfoPV3 = PV3.TxInfo
+    { PV3.txInfoInputs = []
+    , PV3.txInfoOutputs = []
+    , PV3.txInfoReferenceInputs = []
+    , PV3.txInfoFee = zero
+    , PV3.txInfoMint = zero
+    , PV3.txInfoTxCerts = []
+    , PV3.txInfoWdrl = AMap.empty
+    , PV3.txInfoValidRange = always
+    , PV3.txInfoSignatories = []
+    , PV3.txInfoData = AMap.empty
+    , PV3.txInfoRedeemers = AMap.empty
+    , PV3.txInfoId = PV3.TxId emptyByteString
+    , PV3.txInfoVotes = AMap.empty
+    , PV3.txInfoProposalProcedures = []
+    , PV3.txInfoCurrentTreasuryAmount = Nothing
+    , PV3.txInfoTreasuryDonation = Nothing
+    }
+
+emptyTxInfoPV2 :: PV2.TxInfo
+emptyTxInfoPV2 = PV2.TxInfo
+    { PV2.txInfoInputs = []
+    , PV2.txInfoOutputs = []
+    , PV2.txInfoReferenceInputs = []
+    , PV2.txInfoFee = zero
+    , PV2.txInfoMint = zero
+    , PV2.txInfoDCert = []
+    , PV2.txInfoWdrl = AMap.empty
+    , PV2.txInfoValidRange = always
+    , PV2.txInfoSignatories = []
+    , PV2.txInfoRedeemers = AMap.empty
+    , PV2.txInfoData = AMap.empty
+    , PV2.txInfoId = TxId emptyByteString
+    }
+
+emptyTxInfoPV1 :: PV1.TxInfo
+emptyTxInfoPV1 = PV1.TxInfo
+    { PV1.txInfoInputs = []
+    , PV1.txInfoOutputs = []
+    , PV1.txInfoFee = zero
+    , PV1.txInfoMint = zero
+    , PV1.txInfoDCert = []
+    , PV1.txInfoWdrl = []
+    , PV1.txInfoValidRange = always
+    , PV1.txInfoSignatories = []
+    , PV1.txInfoData = []
+    , PV1.txInfoId = TxId emptyByteString
+    }

@@ -45,7 +45,11 @@ test-suite plutus-apps-extra-test
     cardano-addresses                      -any,
     cardano-api                            -any,
     cardano-ledger-alonzo                  -any,
-    cardano-ledger-core                    -any,
+    cardano-ledger-shelley                  -any,
+    cardano-ledger-conway                  -any,
+    cardano-ledger-babbage                  -any,
+    
+    cardano-ledger-core:{cardano-ledger-core,testlib}                   -any,
     cardano-node-emulator                  -any,
     -- cardano-wallet-core                    -any,
     containers                             -any,

@@ -21,7 +21,8 @@ import           PlutusAppsExtra.Api.Blockfrost (MonadBlockfrost (..))
 import           PlutusAppsExtra.IO.Blockfrost  (getAddressFromStakePubKeyHash, verifyAsset)
 import           PlutusAppsExtra.Utils.Address  (bech32ToAddress, bech32ToStakeAddress)
 import           PlutusAppsExtra.Utils.Network  (HasNetworkId (..))
-import           PlutusLedgerApi.V3             (CurrencySymbol (..), fromBuiltin, toBuiltin)
+import           PlutusLedgerApi.V2             as PV2
+import qualified PlutusLedgerApi.V3             (CurrencySymbol (..), fromBuiltin, toBuiltin)
 import qualified Text.Hex                       as T
 import Cardano.Ledger.Plutus (transKeyHash)
 
@@ -66,7 +67,7 @@ getAddress (StakeAddress _ s@(Cred.KeyHashObj hash)) pool addr
 stakeCredToSpkh :: Cred.StakeCredential StandardCrypto -> StakePubKeyHash
 stakeCredToSpkh (Cred.KeyHashObj hash) = StakePubKeyHash $ transKeyHash hash
 
-verifyAssetTest :: IO (Maybe TxId)
+verifyAssetTest :: IO (Maybe PV2.TxId)
 verifyAssetTest = verifyAsset
     (CurrencySymbol $ toBuiltin $ fromJust $ T.decodeHex "4cd1187e477d56e419c354f1e4c7997a736dfc5e095a2511aba0f75d")
     ""

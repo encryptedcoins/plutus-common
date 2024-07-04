@@ -5,8 +5,8 @@ cradle:
     - path: "plutus-apps-extra/src"
       component: "plutus-apps-extra:lib:plutus-apps-extra"
 
-    - path: "plutus-tx-extra/src"
-      component: "plutus-tx-extra:lib:plutus-tx-extra"
+    - path: "plutus-apps-extra-legacy/src"
+      component: "plutus-apps-extra-legacy:lib:plutus-apps-extra-legacy"
 
     - path: "plutus-apps-extra-test-utils/src"
       component: "plutus-apps-extra-test-utils:lib:plutus-apps-extra-test-utils"

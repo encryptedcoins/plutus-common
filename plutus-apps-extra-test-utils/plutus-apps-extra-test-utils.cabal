@@ -42,6 +42,7 @@ library
     cardano-api                            -any,
     cardano-ledger-alonzo                  -any,
     cardano-ledger-core                    -any,
+    cardano-ledger-binary                  -any,
     cardano-node-emulator                  -any,
     containers                             -any,
     data-default                           -any,

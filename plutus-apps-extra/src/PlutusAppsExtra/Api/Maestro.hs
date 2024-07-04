@@ -1,9 +1,12 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE TypeOperators     #-}
-{-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE AllowAmbiguousTypes        #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE ViewPatterns               #-}
 
 module PlutusAppsExtra.Api.Maestro where
 
@@ -11,6 +14,7 @@ import           Cardano.Api                   (NetworkId (..), NetworkMagic (..
 import           Control.Exception             (Exception (fromException), throw)
 import           Control.Monad.Catch           (MonadCatch, MonadThrow (..))
 import           Control.Monad.IO.Class        (MonadIO (..))
+import           Control.Monad.Reader          (MonadReader, ReaderT (..), asks)
 import qualified Data.ByteString               as BS
 import           Data.Data                     (Proxy (..))
 import           Data.String                   (IsString (..))
@@ -132,3 +136,15 @@ getFromEndpointMaestro endpoint = do
 
 portMaestro :: Int
 portMaestro = 80
+
+newtype MaestroIOWrapper a = MkMaestroIOWrapper {unMkMaestroIOWrapper :: ReaderT (NetworkId, MaestroToken) IO a}
+    deriving newtype (Functor, Applicative, Monad, MonadThrow, MonadCatch, MonadIO, MonadReader (NetworkId, MaestroToken))
+
+instance HasNetworkId MaestroIOWrapper where
+    getNetworkId = asks fst
+
+instance MonadMaestro MaestroIOWrapper where
+    getMaestroToken = asks snd
+
+runMaestroInIO :: NetworkId -> MaestroToken -> MaestroIOWrapper a -> IO a
+runMaestroInIO networkId token m = (`runReaderT` (networkId, token)) $ unMkMaestroIOWrapper m

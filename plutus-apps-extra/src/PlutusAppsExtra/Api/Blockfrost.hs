@@ -5,10 +5,10 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE ViewPatterns               #-}
-{-# LANGUAGE RankNTypes                 #-}
 
 module PlutusAppsExtra.Api.Blockfrost where
 
@@ -16,13 +16,13 @@ import           Cardano.Api                      (NetworkId (..), NetworkMagic 
 import           Control.Exception                (throw)
 import           Control.Monad.Catch              (Exception (..), MonadCatch, MonadThrow (..))
 import           Control.Monad.IO.Class           (MonadIO (..))
-import           Control.Monad.Reader             (ReaderT (..), asks, MonadReader)
+import           Control.Monad.Reader             (MonadReader, ReaderT (..), asks)
 import qualified Data.ByteString                  as BS
 import           Data.Data                        (Proxy (..))
 import           Data.String                      (IsString (..))
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
-import           Ledger                           (Datum, DatumHash, Script, ScriptHash, TxId, Validator, ValidatorHash, Versioned)
+import           Ledger                           (Datum, DatumHash, Script, ScriptHash, Validator, ValidatorHash, Versioned)
 import           Network.HTTP.Client              (HttpException (..), newManager)
 import           Network.HTTP.Client.TLS          (tlsManagerSettings)
 import           Plutus.Script.Utils.Value        (AssetClass (..), CurrencySymbol, TokenName)
@@ -32,16 +32,17 @@ import           PlutusAppsExtra.Utils.Blockfrost (AccDelegationHistoryResponse 
                                                    AssetTxsResponse (..), Bf (..), BfAddress (..), BfOrder (..), TxUtxoResponse (..))
 import           PlutusAppsExtra.Utils.Network    (HasNetworkId (..))
 import           PlutusAppsExtra.Utils.Servant    (CBOR)
+import qualified PlutusLedgerApi.V2               as PV2
 import           Servant.API                      (Capture, Get, Header, JSON, PlainText, PostAccepted, QueryParam, ReqBody, (:>))
-import           Servant.Client                   (BaseUrl (..), ClientM, Scheme (..), client, mkClientEnv, runClientM)
 import qualified Servant.Client                   as Servant
+import           Servant.Client                   (BaseUrl (..), ClientM, Scheme (..), client, mkClientEnv, runClientM)
 
 --------------------------------------------------- Blockfrost API ---------------------------------------------------
 
 type GetTxUtxo = ApiPrefix :> Auth :>
-    "txs" :> Capture "Tx hash" (Bf TxId) :> "utxos" :> Get '[JSON] TxUtxoResponse
+    "txs" :> Capture "Tx hash" (Bf PV2.TxId) :> "utxos" :> Get '[JSON] TxUtxoResponse
 
-getTxUtxo :: MonadBlockfrost m => TxId -> m TxUtxoResponse
+getTxUtxo :: MonadBlockfrost m => PV2.TxId -> m TxUtxoResponse
 getTxUtxo txId = getFromEndpointBFWithToken $ \t ->
     client (Proxy @GetTxUtxo) t $ Bf txId
 
@@ -108,7 +109,7 @@ getValidatorByHashUnsafe vh = getFromEndpointBFWithToken $ \t -> client (Proxy @
 type SumbitTx = ApiPrefix :> Auth :>
     "tx" :> "submit" :> ReqBody '[CBOR] BS.ByteString :> PostAccepted '[PlainText] Text
 
-submitTx :: MonadBlockfrost m => BS.ByteString -> m TxId
+submitTx :: MonadBlockfrost m => BS.ByteString -> m PV2.TxId
 submitTx txCbor = fmap (fromString . T.unpack) . getFromEndpointBFWithToken $ \t -> client (Proxy @SumbitTx) t txCbor
 
 ------------------------------------------------------------- Helpers -------------------------------------------------------------

@@ -13,7 +13,7 @@ import           Cardano.Api.Shelley              (PoolId)
 import           Control.Applicative              ((<|>))
 import           Control.Lens                     (preview, (.~), (^.))
 import           Control.Lens.Tuple               (Field3 (_3))
-import           Control.Monad                    (foldM)
+import           Control.Monad                    (foldM, forM)
 import           Control.Monad.IO.Class           (MonadIO (..))
 import           Control.Monad.Trans              (MonadTrans (..))
 import           Control.Monad.Trans.Maybe        (MaybeT (..))
@@ -25,11 +25,10 @@ import qualified Data.Map                         as Map
 import           Data.Maybe                       (fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set                         as Set
 import           Ledger                           (Address (..), Datum (..), DatumFromQuery (..), DatumHash, DecoratedTxOut (..), Script,
-                                                   ScriptHash (getScriptHash), StakePubKeyHash (..), TxId (..), TxOutRef (..), Validator, ValidatorHash (..),
-                                                   Versioned, decoratedTxOutDatum, decoratedTxOutReferenceScript, decoratedTxOutValidator,
-                                                   decoratedTxOutValidatorHash, fromCardanoValue)
+                                                   ScriptHash (getScriptHash), StakePubKeyHash (..), TxOutRef (..), Validator,
+                                                   ValidatorHash (..), Versioned, decoratedTxOutDatum, decoratedTxOutReferenceScript,
+                                                   decoratedTxOutValidator, decoratedTxOutValidatorHash, fromCardanoValue)
 import           Plutus.Script.Utils.Value        (CurrencySymbol, TokenName)
-import           PlutusLedgerApi.V3             (Credential (..), ToData (..))
 import           PlutusAppsExtra.Api.Blockfrost   (MonadBlockfrost (..))
 import qualified PlutusAppsExtra.Api.Blockfrost   as Api
 import           PlutusAppsExtra.Types.Tx         (UtxoRequirement (..), UtxoRequirements)
@@ -43,7 +42,9 @@ import           PlutusAppsExtra.Utils.Datum      (hashDatum)
 import qualified PlutusAppsExtra.Utils.Datum      as Datum
 import           PlutusAppsExtra.Utils.Network    (HasNetworkId (..))
 import           PlutusAppsExtra.Utils.Servant    (handle404Maybe)
-import qualified PlutusLedgerApi.V1.Value as P
+import qualified PlutusLedgerApi.V1.Value         as P
+import qualified PlutusLedgerApi.V2               as PV2
+import           PlutusLedgerApi.V3               (Credential (..), ToData (..))
 ----------------------------------------------------------- Hi-level API -----------------------------------------------------------
 
 getAddressFromStakePubKeyHash :: MonadBlockfrost m => PoolId -> StakePubKeyHash -> m (Maybe Address)
@@ -88,7 +89,7 @@ getAssetHistory cs name = foldPages $ Api.getAssetHistory cs name Nothing
 getAssetTxs :: MonadBlockfrost m =>  CurrencySymbol -> TokenName -> m [AssetTxsResponse]
 getAssetTxs cs name = foldPages $ Api.getAssetTxs cs name Nothing
 
-getTxUtxo :: MonadBlockfrost m => UtxoRequirements -> TxId -> m MapUTXO
+getTxUtxo :: MonadBlockfrost m => UtxoRequirements -> PV2.TxId -> m MapUTXO
 getTxUtxo reqs txId = Api.getTxUtxo txId >>= mkEvaluatedMapUtxo reqs
 
 isUsedAddress :: MonadBlockfrost m =>  Address -> m Bool
@@ -108,19 +109,19 @@ getValidatorByHash = handle404Maybe . Api.getValidatorByHashUnsafe
 -------------------------------------------- Iterative monitoring (delegated txs)  --------------------------------------------
 
 -- Get ids of txs with asset of the specified policy
--- If txId is passed as the last argument - function will stop after ecnountering this txId
+-- If PV2.TxId is passed as the last argument - function will stop after ecnountering this PV2.TxId
 -- This function is useful when you need to iteratively monitor txs related to specific asset
-getAllAssetTxsAfterTxId :: MonadBlockfrost m =>  CurrencySymbol -> TokenName -> Maybe TxId -> m [TxId]
+getAllAssetTxsAfterTxId :: MonadBlockfrost m =>  CurrencySymbol -> TokenName -> Maybe PV2.TxId -> m [PV2.TxId]
 getAllAssetTxsAfterTxId cs name mbTxId = takeAssetTxsWhile cs name (Just Desc) pure predicate
     where
         predicate txId = if Just txId == mbTxId then Left txId else Right txId
 
--- Apply function to txId list to get txs while predicate(either) holds
-takeAssetTxsWhile ::  MonadBlockfrost m =>  CurrencySymbol -> TokenName -> Maybe BfOrder -> (TxId -> m a) -> (a -> Either l r) -> m [r]
+-- Apply function to PV2.TxId list to get txs while predicate(either) holds
+takeAssetTxsWhile ::  MonadBlockfrost m =>  CurrencySymbol -> TokenName -> Maybe BfOrder -> (PV2.TxId -> m a) -> (a -> Either l r) -> m [r]
 takeAssetTxsWhile cs name mbOrder getTxInfo predicate = rights <$> takeAssetTxsWhileWithResult cs name mbOrder getTxInfo predicate
 
--- Apply function to txId list to get txs while predicate(either) holds, with save of first failed result
-takeAssetTxsWhileWithResult :: MonadBlockfrost m =>  CurrencySymbol -> TokenName -> Maybe BfOrder -> (TxId -> m a) -> (a -> Either l r) -> m [Either l r]
+-- Apply function to PV2.TxId list to get txs while predicate(either) holds, with save of first failed result
+takeAssetTxsWhileWithResult :: MonadBlockfrost m =>  CurrencySymbol -> TokenName -> Maybe BfOrder -> (PV2.TxId -> m a) -> (a -> Either l r) -> m [Either l r]
 takeAssetTxsWhileWithResult cs name mbOrder getTxInfo predicate = concat <$> foldPagesWhile 1
     where
         foldPagesWhile page = Api.getAssetTxs cs name mbOrder page >>= \case
@@ -136,7 +137,7 @@ takeAssetTxsWhileWithResult cs name mbOrder getTxInfo predicate = concat <$> fol
 
 --------------------------------------------------- Encoins distribution  ---------------------------------------------------
 
-verifyAsset :: MonadBlockfrost m => CurrencySymbol -> TokenName -> Integer -> Address -> m (Maybe TxId)
+verifyAsset :: MonadBlockfrost m => CurrencySymbol -> TokenName -> Integer -> Address -> m (Maybe PV2.TxId)
 verifyAsset cs token amount addr = do
     history <- getAssetTxs cs token
     foldM (\res (atrTxHash -> txId) -> (res <|>) <$> (Api.getTxUtxo txId <&> findOutput txId . turOutputs)) Nothing history
@@ -147,9 +148,9 @@ verifyAssetFast
     :: MonadBlockfrost m => CurrencySymbol
     -> TokenName
     -> [(Address, Integer)]
-    -> Maybe ([(Address, Integer, TxId)] -> m ()) -- Function to save intermidiate results
-    -> [(Address, Integer, TxId)]      -- Already verified addresses
-    -> m [Either Address (Address, Integer, TxId)]
+    -> Maybe ([(Address, Integer, PV2.TxId)] -> m ()) -- Function to save intermidiate results
+    -> [(Address, Integer, PV2.TxId)]      -- Already verified addresses
+    -> m [Either Address (Address, Integer, PV2.TxId)]
 verifyAssetFast cs token recepients saveIntermidiate verified = do
         history <- getAssetTxs cs token
         go recepients $ filter ((`notElem` map (^. _3) verified) . atrTxHash) history
@@ -161,7 +162,7 @@ verifyAssetFast cs token recepients saveIntermidiate verified = do
         go rs [] = pure $ map (Left . fst) rs
         go rs ((atrTxHash -> txId) : hs) = do
             pairs <- map (\o -> (turoAddress o, P.valueOf (fromCardanoValue $ turoAmount o) cs token)) . turOutputs <$> Api.getTxUtxo txId
-            let res = map (\(a,b) -> (a,b,txId)) $ pairs `intersect` rs
+            let res = map (\(a,b) -> (a,b, txId)) $ pairs `intersect` rs
                 currentCounter = total - length rs
             maybe (pure ()) ($ res) saveIntermidiate
             liftIO $ putStrLn $ show currentCounter <> "/" <> show total
@@ -182,7 +183,7 @@ mkEvaluatedMapUtxo reqs resp =  Map.fromList . mapMaybe sequence . zip (unspentT
     mapM (mkEvaluatedDecoratedTxOut reqs) (turOutputs resp)
 
 mkEvaluatedDecoratedTxOut :: MonadBlockfrost m => UtxoRequirements -> TxUtxoResponseOutput -> m (Maybe DecoratedTxOut)
-mkEvaluatedDecoratedTxOut reqs TxUtxoResponseOutput{..} = sequence $ mkUnevaluatedDecoratedTxOut TxUtxoResponseOutput{..} <&> \txOut -> do
+mkEvaluatedDecoratedTxOut reqs TxUtxoResponseOutput{..} = forM (mkUnevaluatedDecoratedTxOut TxUtxoResponseOutput{..}) $ \txOut -> do
         fd <- evaluateWhen RequiresDatum     evaluateDatum      $ turoDatumHash <|> hashDatum  <$> turoInlineDatum
         fs <- evaluateWhen RequiresScript    evaluateScript      turoReferenceScriptHash
         fv <- evaluateWhen RequiresValidator evaluateValidator $ preview decoratedTxOutValidatorHash txOut

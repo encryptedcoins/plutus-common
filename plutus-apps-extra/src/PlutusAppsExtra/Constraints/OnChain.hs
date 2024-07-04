@@ -10,13 +10,13 @@
 module PlutusAppsExtra.Constraints.OnChain where
 
 import           Ledger                      (contains, interval)
-import           PlutusLedgerApi.V3          (CurrencySymbol, Datum (getDatum), Extended (Finite), FromData (..), Interval (ivFrom, ivTo),
+import           PlutusLedgerApi.V2          (CurrencySymbol, Datum (getDatum), Extended (Finite), FromData (..), Interval (ivFrom, ivTo),
                                               LowerBound (LowerBound), Map, OutputDatum (NoOutputDatum, OutputDatum, OutputDatumHash),
                                               POSIXTime, ScriptContext (scriptContextTxInfo), TokenName, TxInInfo (txInInfoResolved),
                                               TxInfo (txInfoInputs, txInfoMint, txInfoOutputs, txInfoReferenceInputs, txInfoValidRange),
                                               TxOut (txOutDatum), UpperBound (UpperBound), Value (getValue))
-import qualified PlutusLedgerApi.V3          as P
-import           PlutusLedgerApi.V3.Contexts (findDatum, findOwnInput, ownCurrencySymbol)
+import qualified PlutusLedgerApi.V2          as P
+import           PlutusLedgerApi.V2.Contexts (findDatum, findOwnInput, ownCurrencySymbol)
 import           PlutusTx.AssocMap           (lookup)
 import qualified PlutusTx.AssocMap           as PMAP
 import           PlutusTx.Prelude            (Bool (False), Eq ((==)), Functor (fmap), Integer, Maybe (..), error, filter, find, fromMaybe,

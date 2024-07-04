@@ -17,6 +17,7 @@
 module PlutusAppsExtra.Utils.Maestro where
 
 import qualified Cardano.Api                    as C
+import           Cardano.Ledger.Alonzo          (Alonzo)
 import           Control.Monad                  (forM, mzero)
 import           Data.Aeson                     (FromJSON (..), withObject, (.:), (.:?))
 import qualified Data.Aeson                     as J
@@ -30,13 +31,14 @@ import qualified Data.Time                      as Time
 import           GHC.Generics                   (Generic)
 import           GHC.Records                    (HasField (..))
 import           Ledger                         (Address, Datum (..), DatumFromQuery (..), DatumHash, Language (..), PubKeyHash (..),
-                                                 Script, ScriptHash (..), Slot (..), StakePubKeyHash (..), TxId (..), Versioned (..))
+                                                 Script, ScriptHash (..), Slot (..), StakePubKeyHash (..), Versioned (..))
 import           Ledger.Scripts                 (Script (..))
 import           Plutus.Script.Utils.Value      (AssetClass (..))
 import           PlutusAppsExtra.IO.Tx.Internal (TxState)
 import           PlutusAppsExtra.Utils.Address  (bech32ToAddress, bech32ToStakePubKeyHash)
 import           PlutusAppsExtra.Utils.Scripts  (scriptFromCBOR)
 import qualified PlutusLedgerApi.V1             as PV1
+import qualified PlutusLedgerApi.V2             as PV2
 import           PlutusLedgerApi.V3             (BuiltinByteString, CurrencySymbol (..), TokenName (..), fromBuiltin, toBuiltin)
 import           Servant.API                    (ToHttpApiData (..))
 import qualified Text.Hex                       as T
@@ -84,7 +86,7 @@ data AssetMintsAndBurnsData = AssetMintsAndBurnsData
     { ambrAmount    :: Integer
     , ambrSlot      :: Slot
     , ambrTimestamp :: Time.UTCTime
-    , ambrTxHash    :: TxId
+    , ambrTxHash    :: PV2.TxId
     } deriving (Show)
 
 instance FromJSON AssetMintsAndBurnsResponse where
@@ -98,7 +100,7 @@ instance FromJSON AssetMintsAndBurnsData where
         ambrAmount    <- o .: "amount" >>= maybe (fail "AssetMintsAndBurnsResponse: read amount") pure . readMaybe
         ambrSlot      <- o .: "slot" <&> Slot
         ambrTimestamp <- o .: "timestamp" >>= Time.parseTimeM True Time.defaultTimeLocale "%Y-%-m-%-d %H:%M:%S"
-        ambrTxHash    <- o .: "tx_hash" <&> TxId
+        ambrTxHash    <- o .: "tx_hash" <&> PV2.TxId
         pure AssetMintsAndBurnsData{..}
 
 data ScriptByHashResponse = ScriptByHashResponse
@@ -115,7 +117,7 @@ instance FromJSON ScriptByHashResponse where
         pure ScriptByHashResponse{..}
 
 data TxDetailsResponse = TxDetailsResponse
-    { tdrTxHash            :: TxId
+    { tdrTxHash            :: PV2.TxId
     , tdrOutputs           :: [TxDetailsOutput]
     , tdrAdditionalSigners :: [PubKeyHash]
     , tdrSlot              :: Slot
@@ -124,7 +126,7 @@ data TxDetailsResponse = TxDetailsResponse
 instance FromJSON TxDetailsResponse where
     parseJSON = withObject "TxDetailsResponse" $ \o -> do
         d                    <- o .: "data"
-        tdrTxHash            <- d .: "tx_hash" <&> TxId
+        tdrTxHash            <- d .: "tx_hash" <&> PV2.TxId
         tdrOutputs           <- d .: "outputs"
         tdrSlot              <- d .:  "block_absolute_slot" <&> fromInteger
         tdrAdditionalSigners <- d .: "additional_signers" >>=
@@ -132,7 +134,7 @@ instance FromJSON TxDetailsResponse where
         pure TxDetailsResponse{..}
 
 data TxDetailsOutput = TxDetailsOutput
-    { tdoTxHash  :: TxId
+    { tdoTxHash  :: PV2.TxId
     , tdoIndex   :: Integer
     , tdoAddress :: Address
     , tdoDatum   :: Maybe (DatumHash, DatumFromQuery)
@@ -140,7 +142,7 @@ data TxDetailsOutput = TxDetailsOutput
 
 instance FromJSON TxDetailsOutput where
     parseJSON = withObject "TxDetailsOutput" $ \o -> do
-        tdoTxHash  <- o .:  "tx_hash" <&> TxId
+        tdoTxHash  <- o .:  "tx_hash" <&> PV2.TxId
         tdoIndex   <- o .:  "index"
         tdoAddress <- o .:  "address" >>= maybe (fail "bech32ToAddress TxDetailsOutput") pure . bech32ToAddress
         tdoDatum   <- o .:? "datum" <&> fmap unMaestro
@@ -170,7 +172,7 @@ data TxStateResponse = TxStateResponse
     { tsrBlock     :: Maybe Int
     , tsrState     :: TxState
     , tsrTimestamp :: Time.UTCTime
-    , tsrTxHash    :: PV1.TxId
+    , tsrTxHash    :: PV2.TxId
     } deriving (Show, Eq)
 
 instance FromJSON TxStateResponse where
@@ -180,7 +182,7 @@ instance FromJSON TxStateResponse where
             num -> maybe (fail "read block") (pure . Just) $ readMaybe $ T.unpack num
         tsrState     <- (o .:  "state" >>=) $ J.withText "state" $ maybe (fail "read txState") pure . readMaybe . T.unpack
         tsrTimestamp <- o .: "timestamp"
-        tsrTxHash    <- o .: "transaction_hash"  <&> PV1.TxId
+        tsrTxHash    <- o .: "transaction_hash"  <&> PV2.TxId
         pure TxStateResponse{..}
 
 data UtxosAtAddressResponse = UtxosAtAddressResponse
@@ -192,7 +194,7 @@ instance HasField "cursor" UtxosAtAddressResponse (Maybe Cursor) where
     getField = uaarCursor
 
 data UtxosAtAddressData = UtxosAtAddressData
-    { uaadTxHash          :: PV1.TxId
+    { uaadTxHash          :: PV2.TxId
     , uaadIndex           :: Integer
     , uaadAddress         :: Address
     , uaadValue           :: C.Value
@@ -208,7 +210,7 @@ instance FromJSON UtxosAtAddressResponse where
 
 instance FromJSON UtxosAtAddressData where
     parseJSON = withObject "UtxosAtAddressData" $ \o -> do
-        uaadTxHash          <- o .: "tx_hash" <&> PV1.TxId
+        uaadTxHash          <- o .: "tx_hash" <&> PV2.TxId
         uaadIndex           <- o .: "index"
         uaadAddress         <- o .: "address" >>= maybe (fail "bech32ToAddress TxDetailsOutput") pure . bech32ToAddress
         uaadValue           <- o .: "assets" <&> mconcat . fmap unMaestro
@@ -216,7 +218,7 @@ instance FromJSON UtxosAtAddressData where
         uaadReferenceScript <- o .:? "reference_script" <&> fmap unMaestro
         pure UtxosAtAddressData{..}
 
-deriving via BuiltinByteString instance FromJSON (Maestro PV1.TxId)
+deriving via BuiltinByteString instance FromJSON (Maestro PV2.TxId)
 
 instance FromJSON (Maestro C.Value) where
     parseJSON = withObject "Bf Value" $ \o -> (,) <$> o .: "unit" <*> o .: "amount" >>= \case
@@ -247,17 +249,22 @@ instance FromJSON (Maestro (DatumHash, DatumFromQuery)) where
 
 instance FromJSON (Maestro (Versioned Script)) where
     parseJSON =  withObject "Maestro versioned script" $ \o -> do
-        script <- o .: "bytes" >>= J.withText "script bytes" (maybe (fail "scriptFromCBOR") (pure . Script) . scriptFromCBOR)
         lang   <- o .: "type" >>= \case
             J.String "plutusv1" -> pure PlutusV1
             J.String "plutusv2" -> pure PlutusV2
+            J.String "plutusv3" -> pure PlutusV3
             _                   -> fail "script language"
+        let decodeScript = case lang of
+                PlutusV1 -> scriptFromCBOR @PlutusV1 @Alonzo
+                PlutusV2 -> scriptFromCBOR @PlutusV2 @Alonzo
+                PlutusV3 -> scriptFromCBOR @PlutusV3 @Alonzo
+        script <- o .: "bytes" >>= J.withText "script bytes" (either (const $ fail "scriptFromCBOR") (pure . Script) . decodeScript)
         pure $ Maestro $ Versioned script lang
 
-instance ToHttpApiData (Maestro PV1.TxId) where
+instance ToHttpApiData (Maestro PV2.TxId) where
     toUrlPiece = encodeHex . fromBuiltin @BuiltinByteString . coerce
 
-deriving via (Maestro PV1.TxId) instance ToHttpApiData (Maestro ScriptHash)
+deriving via (Maestro PV2.TxId) instance ToHttpApiData (Maestro ScriptHash)
 
 instance ToHttpApiData (Maestro AssetClass) where
     toUrlPiece (Maestro (AssetClass (CurrencySymbol cs, TokenName token))) = T.encodeHex (fromBuiltin cs) <> T.decodeUtf8 (fromBuiltin token)

@@ -30,11 +30,12 @@ import           Data.Text                     (Text)
 import qualified Data.Text                     as T
 import qualified Data.Text.Encoding            as T
 import           Deriving.Aeson                (CamelToSnake, CustomJSON (CustomJSON), FieldLabelModifier, Generic, StripPrefix)
-import           Ledger                        (Address, Datum (..), DatumHash (..), ScriptHash, TxId (..), ValidatorHash (..))
+import           Ledger                        (Address, Datum (..), DatumHash (..), ScriptHash, ValidatorHash (..))
 import           Plutus.Script.Utils.Value     (AssetClass (..), TokenName (..))
 import           PlutusAppsExtra.Types.Error   (BlockfrostError (..))
 import           PlutusAppsExtra.Utils.Address (addressToBech32, bech32ToAddress)
 import qualified PlutusLedgerApi.V1            as PV1
+import qualified PlutusLedgerApi.V2            as PV2
 import           PlutusLedgerApi.V3            (BuiltinByteString, CurrencySymbol (..), fromBuiltin, toBuiltin)
 import qualified PlutusLedgerApi.V3            as P
 import           Servant.API                   (ToHttpApiData (..))
@@ -44,7 +45,7 @@ import           Text.Read                     (readMaybe)
 
 data AccDelegationHistoryResponse = AccDelegationHistoryResponse
     { adhrActiveEpoch :: Int
-    , adhrTxHash      :: TxId
+    , adhrTxHash      :: PV2.TxId
     , adhrAmount      :: Int
     , adhrPoolId      :: PoolId
     } deriving (Show, Eq)
@@ -52,7 +53,7 @@ data AccDelegationHistoryResponse = AccDelegationHistoryResponse
 instance FromJSON AccDelegationHistoryResponse where
     parseJSON = withObject "Acc delegation history response" $ \o -> do
         adhrActiveEpoch <- o .: "active_epoch"
-        adhrTxHash      <- o .: "tx_hash" <&> TxId
+        adhrTxHash      <- o .: "tx_hash" <&> PV2.TxId
         adhrAmount      <- o .: "amount" >>= maybe (fail "amount") pure . readMaybe
         adhrPoolId      <- o .: "pool_id"
         pure AccDelegationHistoryResponse{..}
@@ -93,14 +94,14 @@ instance FromJSON TxDelegationsCertsResponse where
         pure TxDelegationsCertsResponse{..}
 
 data TxUtxoResponse = TxUtxoResponse
-    { turTxHash  :: PV1.TxId
+    { turTxHash  :: PV2.TxId
     , turInputs  :: [TxUtxoResponseInput]
     , turOutputs :: [TxUtxoResponseOutput]
     } deriving (Show, Eq)
 
 instance FromJSON TxUtxoResponse where
     parseJSON = withObject "Tx UTXOs response" $ \o -> do
-        turTxHash  <- o .: "hash" <&> PV1.TxId
+        turTxHash  <- o .: "hash" <&> PV2.TxId
         turInputs  <- o .: "inputs"
         turOutputs <- o .: "outputs"
         pure TxUtxoResponse{..}
@@ -159,25 +160,25 @@ data AssetAddressesResponse = AssetAddressesResponse
       deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "adr", CamelToSnake]] AssetAddressesResponse
 
 data AssetTxsResponse = AssetTxsResponse
-    { atrTxHash  :: TxId
+    { atrTxHash  :: PV2.TxId
     , atrTxIndex :: Integer
     } deriving (Show, Generic)
 
 instance FromJSON AssetTxsResponse where
     parseJSON = withObject "Asset txs response" $ \o -> do
-        atrTxHash  <- o .: "tx_hash" <&> TxId
+        atrTxHash  <- o .: "tx_hash" <&> PV2.TxId
         atrTxIndex <- o .: "tx_index"
         pure AssetTxsResponse{..}
 
 data AssetHistoryResponse = AssetHistoryResponse
-    { ahrTxHash          :: TxId
+    { ahrTxHash          :: PV2.TxId
     , ahrMintingPolarity :: BfMintingPolarity
     , ahrAmount          :: Integer
     } deriving Show
 
 instance FromJSON AssetHistoryResponse where
     parseJSON = withObject "Asset history response" $ \o -> do
-        ahrTxHash          <- o .: "tx_hash" <&> TxId
+        ahrTxHash          <- o .: "tx_hash" <&> PV2.TxId
         ahrMintingPolarity <- o .: "action"
         ahrAmount          <- o .: "amount" >>= maybe mzero pure . readMaybe . T.unpack
         pure AssetHistoryResponse{..}
@@ -218,7 +219,7 @@ mkBfAddress networkId addr = maybe (throwM $ BlockfrostAddressToBech32Error netw
 instance ToHttpApiData (Bf StakeAddress) where
     toUrlPiece (Bf addr) = serialiseAddress addr
 
-instance ToHttpApiData (Bf TxId) where
+instance ToHttpApiData (Bf PV2.TxId) where
     toUrlPiece = T.dropAround (== '\"') . T.pack . show
 
 instance ToHttpApiData (Bf AssetClass) where
