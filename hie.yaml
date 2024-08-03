@@ -16,7 +16,7 @@ cradle:
 
     # Plutus-tx-extra
     - path: "plutus-tx-extra/src"
-      component: "plutus-tx-extra:lib:"plutus-tx-extra"
+      component: "plutus-tx-extra:lib:plutus-tx-extra"
 
     # Csl-types
     - path: "csl-types/src"

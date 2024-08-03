@@ -187,7 +187,8 @@ makeLensesFor
     , ("txInsReference", "txInsReference'")
     , ("txExtraKeyWits", "txExtraKeyWits'")
     , ("txOuts", "txOuts'")
-    , ("txValidityRange", "txValidityRange'")
+    , ("txValidityLowerBound", "txValidityLowerBound'")
+    , ("txValidityUpperBound", "txValidityUpperBound'")
     , ("txMintValue", "txMintValue'")
     ] ''C.TxBodyContent
 
@@ -231,8 +232,16 @@ txMintValue = coerced . txMintValue' . iso toMaybe fromMaybe
 txOuts :: Lens' C.CardanoBuildTx [C.TxOut C.CtxTx C.ConwayEra]
 txOuts = coerced . txOuts'
 
+txValidityLowerBound :: Lens' C.CardanoBuildTx (C.TxValidityLowerBound C.ConwayEra)
+txValidityLowerBound = coerced . txValidityLowerBound'
+
+txValidityUpperBound :: Lens' C.CardanoBuildTx (C.TxValidityUpperBound C.ConwayEra)
+txValidityUpperBound = coerced . txValidityUpperBound'
+
 txValidityRange :: Lens' C.CardanoBuildTx (C.TxValidityLowerBound C.ConwayEra, C.TxValidityUpperBound C.ConwayEra)
-txValidityRange = coerced . txValidityRange
+txValidityRange = lens
+    (\tx -> (view txValidityLowerBound tx, view txValidityUpperBound tx))
+    (\tx (l, u) -> set txValidityUpperBound u $ set txValidityLowerBound l tx)
 
 emptyCardanoBuildTx :: Params -> C.CardanoBuildTx
 emptyCardanoBuildTx p = C.CardanoBuildTx $ C.TxBodyContent
