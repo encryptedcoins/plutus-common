@@ -132,6 +132,7 @@ getFromEndpointMaestro endpoint = do
             Mainnet                  -> "mainnet"
             Testnet (NetworkMagic 1) -> "preprod"
             Testnet (NetworkMagic 2) -> "preview"
+            Testnet (NetworkMagic 4) -> "sanchonet"
             Testnet m                -> throw $ MaestroUnknownNetworkMagic m
 
 portMaestro :: Int
